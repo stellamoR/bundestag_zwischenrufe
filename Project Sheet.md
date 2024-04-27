@@ -1,4 +1,4 @@
-# Project Sheet: Titel des Projekts
+# Project Sheet: "Bühne Bundestag: Die Tonlage der Debatte"
 
 Team-Mitglieder:
 
@@ -27,7 +27,7 @@ Dieser enorme Wissensschatz ist auf der [Website des Bundestags](https://www.bun
 - Zählen der Zwischenrufe
   -  Aufschlüsselung nach Zeitpunkt, Partei, Redner etc.
   -  "Wer ruft wem am öftesten hinein?", "Gibt es Unterschiede zwischen Opposition und Regierung"
-- Auszählen von Wörtern. Beispielsweise Schimpfwörter, "Inflation" etc. Beispielartikel der Zeit zu Schimpfwörtern [hier](https://www.sueddeutsche.de/bayern/bayern-landtag-afd-verrohung-strafen-beleidigungen-aigner-1.6475443)
+- Auszählen von Wörtern. Beispielsweise Schimpfwörter, "Inflation" etc. Beispielartikel der Zeit zu Schimpfwörtern [hier](https://www.zeit.de/kultur/2019-09/beleidigungen-bundestagsreden-arsch-arschloch-bundeswoerter)
 - Klassische Wordcloud-Analysen.
 
 ### ML-Task 1: Sentimentanalyse
