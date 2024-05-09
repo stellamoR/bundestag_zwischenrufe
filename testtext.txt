@@ -451,6 +451,21 @@ Anlage 3
 
 Amtliche Mitteilungen 
 
+Unterbrechung{
+    Redner: {
+        Name: Cl
+        Partei: FDP
+    }
+    Unterbrecher:{
+        Name: Hans Lambda
+        Partei: AfD
+    }
+    Text vor Unterbrechung: <Wörterrrr>
+    Text Zwischenruf: <böse Wörterrrr>
+}
+
+
+
 
 
 
@@ -3602,7 +3617,7 @@ Das sind Errungenschaften.
 Das wollen Sie kaputtmachen, selbst mit solchen Anträgen.
 (Dr. Harald Weyel [AfD]: Was Sie da alles reininterpretieren!)
 Und dann kommt bei Ihnen noch ein bisschen Menschenverachtung dazu, große Menschenverachtung, aber ein bisschen Unwissenheit auch.
-(Zuruf von der AfD: Ach Gott!)
+(Zuruf von der AfD: Ach Gott!) <interrupt_afd> ---vorhersage----  
 Es ist richtig bösartig, was dort läuft. Sie haben kein Gefühl dafür. Sie machen auch offensichtlich gar nichts anderes, als hier solche Anträge zu stellen. Waren Sie mal in einer Kommune? Haben Sie sich mal umgeschaut, was denn Europa dort bedeutet für Sportstätten, für Straßen, für Plätze, für den Arbeitsmarkt, für die Unternehmen, für Bildungseinrichtungen? Das ist gelebtes Europa. Das müssen wir selbstverständlich näherbringen.
 (Dr. Götz Frömming [AfD]: Können wir all das nicht allein bauen?)
 Und das wollen Sie kaputtmachen.
