@@ -35,18 +35,15 @@ Dieser enorme Wissensschatz ist auf der [Website des Bundestags](https://www.bun
 - Einige Daten selbst labeln und dann ein Modell trainieren. Dieses Modell dann auf die ungelabelten Zwischenrufe anwenden. Welches wir wählen, klären wir noch mit den Dozenten
 - Passt gut zur statistischen Analyse -> Danach kann man nicht nur beantworten: "Wer ruft wem hinein?", sondern "Ist der Einwurf untersützend, oder kritisch?"
 
-### ML-Task 2: Klassifikation
-- Klassifikation von Reden und Tagesordnungspunkten auf Themenbereiche der Politik. z.B. Bildung, Verteidigung, etc.
-- Hier kann das labeln dadurch abgekürzt werden, dass nicht der Fließtext der Reden selbst händisch gelabelt werden, sondern nur der dazugehörige Tagesordnungspunkt für das Labeln genutzt wird.
-- Auch hier ist die Art des Modells noch nicht geklärt, für lange Reden eignen sich aber vermutlich eher LLMs.
-- Fragestellungen:
-  - "Womit beschäftigt sich der Bundestag wie viel?"
-  - In Zusammenhang mit der statistischen Analyse und ML-Task 1: "Welche Themen sind besonders brisant?"
+### ML-Task 2: Prediction und Generation von Einwürfen
+#### Teil 1
+- Wann wird unterbrochen?
+- Textinput -> Vorhersage, an welcher Stelle es wahrscheinlich ist, dass jemand reinruft.
+- Dabei soll auch vorhergesagt werden, welcher Partei der Kommentator angehört.
+#### Teil 2
+- Was wird reingerufen?
+- Modell erhält Informationen über aktuellen Redner, den Text der bisherigen Rede und die Parteizugehörigkeit des Störers. Jetzt soll ein Zwischenruf formuliert werden. 
 
+#### Zusammenspiel von Teil 1 und Teil 2
+- Eingabe einer Demo-Rede -> Das Modell fügt eigens formulierte Unterbrechungen an passenden Stellen ein.
 
-## Fragen
-
-Welche Modelle eignen sich für die Fragestellungen am besten?
-
--Google Collab (kostenlos immer 24h)
--Lazysloth (epochenweise abspeichern)
