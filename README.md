@@ -1,0 +1,3 @@
+# Bundestagsprotokolle
+Damit sich alle Notebooks ausführen lassen, müssen zuerst die Daten heruntergeladen werden.
+Weil das Git der Hochschule ein 50 MiB Limit pro Push hat, die Daten aber deutlich größer sind, stehen diese in [diesem Onedrive Ordner](https://technischehochschulen-my.sharepoint.com/:f:/g/personal/sternbergro87782_technischehochschulen_onmicrosoft_com/EioLCq7rZ3BMjbGxe63wmxIByMhE7vVq4mGfF5DsYl6xQw?e=Qm0kiX) bereit. 

@@ -1,2 +1,3 @@
 Project Sheet.pdf
-data/opendata_api/
+data/opendata_api/parsed_protocols/*
+data/opendata_api/protocols/*
