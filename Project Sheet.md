@@ -12,7 +12,7 @@ Team-Mitglieder:
 
 Im Bayerischen Landtag wurde erst kürzlich eine Änderung im Abgeordnetengesetz verabschiedet, welche beleidigende Zwischenrufe mit einem Bußgeld von bis zu 4000€ belegt. Das Gesetz wurde über Koalitionsgrenzen hinweg von allen Parteien mit Ausnahme der AfD beschlossen. Störungen im parlamentarischen Betrieb sind also allgegenwärtig und behindern im schlimmsten Fall den demokratischen Prozess.  
 Durch die offensichtlichen Probleme in Bayern stellt sich die Frage, wie es denn im Bundestag aussieht. Wird hier oft beleidigt? Welche Parteien und Politiker tendieren dazu, häufiger Zwischenrufe bei den Debatten zu machen? Wer unterbricht wen am öftesten? Gibt es klare Unterschiede zwischen Opposition und Regierung? Ist das Sentiment eher kritisch oder unterstützend? 
-  
+
 Diese Unterbrechungen lassen sich auch gut mit weiteren Informationen anreichern. Welche Themen (z.B. Bildung, Verteidigung etc.) sind besonders brisant, haben also besonders viele Zwischenrufe? Überhaupt, welche Themen nehmen wie viel Zeit im Bundestag ein?
 
 
