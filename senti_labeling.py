@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 
-path = './data/comments_for_labeling_robin_labeled.csv'
+path = './data/comments_for_labeling_robin_labeled_labeled.csv'
 df = pd.read_csv(path)
 
 
