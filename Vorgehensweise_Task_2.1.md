@@ -3,67 +3,33 @@
 ## Ziel
 Ein Modell entwickeln, das die Wahrscheinlichkeit von Einwürfen und die Partei des Kommentators vorhersagen kann.
 
-## 1. Datenvorbereitung (bereits geschehen)
+# Aufgabe 2.1: Prediction von Einwürfen
 
-## 2. Explorative Datenanalyse
+## Ziel
+Ein Modell entwickeln, das die Wahrscheinlichkeit von Einwürfen und die Partei des Kommentators vorhersagen kann.
 
-### Häufigkeitsanalyse
-**Was?**
-- Häufigkeit von Wörtern und Phrasen zählen, die vor einem Einwurf stehen
+## 1. Modellauswahl (z.B. BERT Kontextwindow von 512 Wörtern)
+- Auf Huggingface ein vortrainiertes Modell finden, das
+    - einzelne Wörter predicted - schauen, was sich eventuell auf <interruption_[party]> abbilden lässt (schon ähnlich ist)
+    - oder Positionstags ausgibt z.B. Satzenden vorhersagt oder Absätze vorhersagt etc.
+- Doku: Warum wir das Modell ausgewählt haben und Alternativen verlinken.
+    
+## 2. Data Preparation
+- Daten auf das Modell aus 1. anpassen. Was sind die Inputs? Braucht man bestimmte Tags für das Modell (siehe Foliensatz RAG bei Beispielprompts). 
+- Basically alle Kommentare innerhalb der speeches durch Tokens (<interruption_[party]>) ersetzen (RegEx aus parsing notebook benutzen, evtl abändern)
 
-**Wie?**
-- Segmente verwenden, in denen `interruption` = true ist
-- NLTK-Bibliothek verwenden, um häufige n-Gramme zu extrahieren
+## 3. Modell Finetunen
+- Welche Loss-Funktion eignet sich, ist die evtl. im vortrainierten Modell schon enthalten?
+- Lohnt es sich die Redner-Partei als eigenen Tag oder als Kontext im Input <inzuzufügen? Wie würde das im Modell gehen?
+- Modell und Daten in Google Colab reinladen (vermutlich über transformers library)
+- Modell finetunen. Wahrscheinlich Überschneidungen zum Übungsnotebook BERT finetuning.
 
-### Word Clouds
-- Visuelle Darstellung der Wörter, die häufig vor einem Einwurf stehen
-
-### Kontextanalyse
-- Analyse des Kontexts, in dem Einwürfe auftreten, z.B., ob Themen oder Reden bestimmter Politiker häufiger unterbrochen werden
-
-### Parteizugehörigkeit der Kommentatoren der Einwürfe bestimmen
-- **Datenaggregation:** Anzahl der Einwürfe pro Partei zählen
-- **Visualisierung:** Balkendiagramm, um die Verteilung der Einwürfe nach Partei darzustellen
-
-### Sequenzmodelle verwenden
-
-- **Segmentierung des Textes:** Text in kleinere Einheiten (z.B. Sätze oder gleitende Fenster) segmentieren, um spezifische Muster von Einwürfen zu erkennen
-- **Vorhersagewahrscheinlichkeiten:** Verwenden eines vortrainierten BERT-Modells, um Vorhersagewahrscheinlichkeiten für Einwürfe in jedem Segment zu berechnen
-- **Visualisierung der Wahrscheinlichkeiten:** Wahrscheinlichkeiten für Einwürfe entlang des Textes visualisieren, um Muster zu erkennen
-
-### Bonus: Zeitreihenanalyse
-- Analyse, ob sich die Häufigkeit und die Partei der Einwürfe über die Jahre verändert haben
-
-## 3. Feature Engineering
-
-### Textfeatures
-- Tokenisierung und Embeddings aus Hugging Face Transformers (z.B. BERT -> Pretrained Transformer Modell) verwenden
-
-### Kontextuelle Features
-- n-Gramme, POS-Tags und andere linguistische Merkmale extrahieren
-
-## 4. Modellierung
-
-### Vorhersage der Unterbrechungszeitpunkte
-- BERT oder RoBERTa finetunen, um die Wahrscheinlichkeit eines Einwurfs für jedes Segment vorherzusagen
-
-### Vorhersage der Partei des Kommentators
-- Multiklassen-Klassifikationsmodell verwenden, um die Partei des Kommentators basierend auf dem Segment zu bestimmen, bei dem ein Einwurf vorhergesagt wurde
-
-## 5. Training und Validierung
-
-### Training
-- Modell mit einem Teil der Daten trainieren und mit einem anderen Teil validieren
-
-### Hyperparameter-Optimierung
-- Beste Hyperparameter finden, indem Grid Search oder Bayesian Optimization verwendet wird
+## (Optional je nach in 1. gewähltem Modell) 4. Vorhersage der Partei des Kommentators
+- Multiklassen-Klassifikationsmodell verwenden, um die Partei des Kommentators basierend auf der Position zu bestimmen, bei der ein Einwurf vorhergesagt wurde
 
 ## 6. Evaluierung
 
 ### Performance Metriken
-- Leistung der Modelle bewerten, indem Precision, Recall, F1-Score und ROC-AUC verwendet werden
-
-## 7. Implementierung und Anwendung
-
-### Deployment
-- Modell mithilfe von Hugging Face APIs deployen
+- Leistung des Modells/der Modelle bewerten.
+- Performance Metriken für Wortvorhersage herausfinden und auf 1. Modell anwenden
+- (optional, je nach in 1. gewähltem Modell): accuracy, percision, f1-score auf Klassifikationsmodell anwenden
