@@ -5,3 +5,4 @@ _data/parsed_protocols/*.json
 _data/protocols/*
 .vscode/*
 III_sentiment_analysis/logs/finetuning/*/*/checkpoint*/*
+III_sentiment_analysis/logs/finetuning/output_old/*
