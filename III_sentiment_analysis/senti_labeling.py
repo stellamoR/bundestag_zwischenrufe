@@ -1,11 +1,10 @@
 import pandas as pd
 import os
 
-path = './data/comments_for_labeling_robin_labeled_labeled.csv'
+path = '_data/comments_for_labeling_robin_labeled_labeled.csv'
 df = pd.read_csv(path)
 
 
-# Create a new column for sentiment
 
 if 'sentiment' not in df.columns:
     df['sentiment'] = -1
@@ -44,7 +43,7 @@ for index, row in df.iloc[start_index:].iterrows():
     df.at[index, 'sentiment'] = sentiment
 
 
-# Save the updated dataframe to a new CSV file
+# save updated dataframe to csv
 output_file = path.replace('.csv', '_labeled.csv')
 df.to_csv(output_file, index=False)
 print(f"Labeling saved to {output_file}")

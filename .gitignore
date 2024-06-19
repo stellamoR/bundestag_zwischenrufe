@@ -1,6 +1,7 @@
 Project Sheet.pdf
-data/opendata_api/parsed_protocols/*
-data/opendata_api/protocols/*
-data/parsed_protocols/*
-data/protocols/*
+_data/opendata_api/parsed_protocols/*
+_data/opendata_api/protocols/*
+_data/parsed_protocols/*.json
+_data/protocols/*
 .vscode/*
+III_sentiment_analysis/logs/finetuning/*/*/checkpoint*/*
