@@ -32,7 +32,7 @@ Dieser enorme Wissensschatz ist auf der [Website des Bundestags](https://www.bun
 
 ### ML-Task 1: Sentimentanalyse
 - Sentimentanalyse auf den Zwischenrufen
-- Einige Daten selbst labeln und dann ein Modell trainieren. Dieses Modell dann auf die ungelabelten Zwischenrufe anwenden. Welches wir wählen, klären wir noch mit den Dozenten
+- Einige Daten selbst labeln und dann ein Modell trainieren. Dieses Modell dann auf die ungelabelten Zwischenrufe anwenden.
 - Passt gut zur statistischen Analyse -> Danach kann man nicht nur beantworten: "Wer ruft wem hinein?", sondern "Ist der Einwurf untersützend, oder kritisch?"
 
 ### ML-Task 2: Prediction und Generation von Einwürfen

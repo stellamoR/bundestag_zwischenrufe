@@ -3,3 +3,4 @@ data/opendata_api/parsed_protocols/*
 data/opendata_api/protocols/*
 data/parsed_protocols/*
 data/protocols/*
+.vscode/*
