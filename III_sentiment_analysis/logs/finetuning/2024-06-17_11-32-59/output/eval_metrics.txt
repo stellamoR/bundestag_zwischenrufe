@@ -1,2 +1,0 @@
-step,eval_loss,eval_accuracy,epoch
-30,0.7171631455421448,0.6755555555555556,0.07
