@@ -12,7 +12,7 @@ import requests
 
 
 API_URL = "https://search.dip.bundestag.de/api/v1/plenarprotokoll-text"
-DEFAULT_API_KEY = "I9FKdCn.hbfefNWCY336dL6x62vfwNKpoN2RZ1gp21"
+DEFAULT_API_KEY = "R2BZaee.DjdCyihKZMf8AOjtScubP2EVydegzjmBIQ"
 DATA_DIR = Path(__file__).resolve().parents[1] / "_data" / "protocols"
 
 
