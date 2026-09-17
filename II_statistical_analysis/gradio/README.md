@@ -1,20 +1,35 @@
----
-title: Bundestag Stats
-emoji: 👁
-colorFrom: purple
-colorTo: indigo
-sdk: gradio
-sdk_version: 4.36.1
-app_file: app.py
-pinned: false
-license: cc-by-4.0
----
+# Bundestag dashboard
 
-# Stats Bundestag
+Interactive plots for the generated speech and interruption datasets.
 
-This repo contains some stats about the german Bundestag, parsed from their protocols.  
-Protocols were pulled in json format via [Opendata Api of the BT](https://dip.bundestag.de/%C3%BCber-dip/hilfe/api).
+## Local launch
 
-Due to formatting changes, the stats only go back until the 12th of March 1991. 
- 
-The stats are subject to error because of errors in the original protocol and possible other errors during parsing.
+From the repository root in PowerShell:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r II_statistical_analysis\gradio\requirements.txt
+.\.venv\Scripts\python.exe II_statistical_analysis\gradio\app.py
+```
+
+Then open <http://127.0.0.1:7860>.
+
+The app reads `_data/speeches.csv`, `_data/interruptions.csv`, and
+`_data/bt_period_data.json`. Paths are resolved relative to the repository, so
+the launch command also works from another current directory.
+
+## Lizenz und Datenquellen
+
+Dieses Projekt (Code, aufbereitete Daten und Auswertungen) steht unter der
+[Creative Commons Namensnennung – Weitergabe unter gleichen Bedingungen 4.0 International (CC BY-SA 4.0)](https://creativecommons.org/licenses/by-sa/4.0/deed.de).
+Der vollständige Lizenztext liegt in [`LICENSE`](../../LICENSE).
+
+**Quelle der Rohdaten:** Plenarprotokolle und Stammdaten der Abgeordneten des
+Deutschen Bundestages, bezogen über das
+[DIP](https://dip.bundestag.de) und das [Open-Data-Angebot des Bundestages](https://www.bundestag.de/services/opendata).
+Die Protokolle sind amtliche Werke (§ 5 Abs. 2 UrhG) und selbst urheberrechtsfrei;
+die CC-BY-SA-Lizenz gilt nur für die Beiträge dieses Projekts.
+
+**Veränderungshinweis:** Die Daten in `_data/` (vom Dashboard gelesen) wurden maschinell aus den
+Originalprotokollen extrahiert und verändert (Zerlegung in Reden und
+Zwischenrufe, Zuordnung von Personen und Parteien, Aggregationen). Sie sind keine
+amtliche Fassung; maßgeblich sind die Originalprotokolle des Bundestages.

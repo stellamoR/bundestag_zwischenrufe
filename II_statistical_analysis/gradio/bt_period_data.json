@@ -74,7 +74,7 @@
             "DIE LINKE": 		75,
             "GRÜNE": 		68,
             "AfD": 0,
-            "fraktionslos": 	1
+            "fraktionslos": 1
         }
     },
     "18":{
@@ -105,7 +105,7 @@
     },
     "20":{
         "start_date": "2021-10-26",
-        "end_date": "2025-09-01",
+        "end_date": "2025-03-24",
         "num_seats":{ 
             "CDU/CSU": 195,
             "SPD": 	207,
@@ -114,6 +114,19 @@
             "GRÜNE": 		118,
             "AfD": 77,
             "fraktionslos": 	7
+        }
+    },
+    "21":{
+        "start_date": "2025-03-25",
+        "end_date": "2029-09-01",
+        "num_seats":{ 
+            "CDU/CSU": 208,
+            "SPD": 	120,
+            "FDP": 		0,
+            "DIE LINKE": 		64,
+            "GRÜNE": 		85,
+            "AfD": 152,
+            "fraktionslos": 	0
         }
     }
 }
