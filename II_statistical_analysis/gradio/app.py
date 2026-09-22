@@ -757,8 +757,8 @@ Grundlage sind die amtlichen Plenarprotokolle und Abgeordneten-Stammdaten aus de
 [Open-Data-Angebot des Bundestages](https://www.bundestag.de/services/opendata).
 Ein automatischer Prozess sucht einmal täglich nach neuen oder korrigierten
 Protokollen. Das Dashboard ist deshalb nicht live: Eine Sitzung erscheint erst,
-nachdem der Bundestag ihr Protokoll veröffentlicht und die Verarbeitung
-erfolgreich abgeschlossen hat.
+nachdem das Protokoll veröffentlicht und die Verarbeitung
+erfolgreich abgeschlossen ist.
 
 ### Aufbereitung und mögliche Fehler
 
