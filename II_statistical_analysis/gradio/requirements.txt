@@ -3,3 +3,4 @@ huggingface-hub>=0.34,<1
 numpy>=1.26
 pandas>=2.0
 plotly>=5.20
+scikit-learn>=1.3

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import inspect
+import html
+import re
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,11 +15,15 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 APP_DIR = Path(__file__).resolve().parent
 REPO_ROOT = APP_DIR.parents[1]
 DATA_DIR = REPO_ROOT / "_data"
+LABELED_INTERRUPTION_PATH = DATA_DIR / "interruptions_labeled.csv"
 
 PARTIES = ["CDU/CSU", "SPD", "GRÜNE", "FDP", "AfD", "DIE LINKE", "fraktionslos"]
 PARTY_COLORS = {
@@ -103,6 +109,27 @@ PERIOD_CHOICES = [
 DEFAULT_PERIOD = PERIOD_CHOICES[-1][1]
 
 
+def train_negative_sentiment_model() -> tuple[TfidfVectorizer, LogisticRegression]:
+    """Train a small CPU-only classifier from the project's manual labels."""
+    labeled = pd.read_csv(LABELED_INTERRUPTION_PATH, encoding="utf-8")
+    labeled = labeled.dropna(subset=["comment_text", "sentiment"])
+    texts = labeled["comment_text"].astype(str)
+    negative = labeled["sentiment"].astype(int).eq(1).astype(int)
+    vectorizer = TfidfVectorizer(
+        analyzer="char_wb", ngram_range=(3, 5), min_df=2,
+        max_features=30_000, sublinear_tf=True,
+    )
+    features = vectorizer.fit_transform(texts)
+    model = LogisticRegression(
+        class_weight="balanced", max_iter=1_000, random_state=42,
+    )
+    model.fit(features, negative)
+    return vectorizer, model
+
+
+SENTIMENT_VECTORIZER, NEGATIVE_SENTIMENT_MODEL = train_negative_sentiment_model()
+
+
 def empty_figure(message: str) -> go.Figure:
     figure = go.Figure()
     figure.add_annotation(text=message, showarrow=False, font={"size": 17})
@@ -133,19 +160,40 @@ YEAR_PLOT_CHOICES = [
     INTERRUPTIONS_TOTAL, INTERRUPTIONS_BY_PARTY,
     INTERRUPTIONS_STACKED, INTERRUPTIONS_SHARE,
 ]
+SEAT_NORMALIZABLE_YEAR_PLOTS = {
+    INTERRUPTIONS_BY_PARTY,
+    INTERRUPTIONS_STACKED,
+    INTERRUPTIONS_SHARE,
+}
 
 
-def interruptions_per_party_year(start_year: int, end_year: int) -> pd.DataFrame:
-    """Count interruptions per year and party, with explicit zeros for area charts."""
-    counts = (DATA.interruptions.loc[DATA.interruptions["year"].between(start_year, end_year)]
-              .groupby(["year", "comment_party"]).size())
+def update_year_seat_toggle(plot_type: str):
+    supported = plot_type in SEAT_NORMALIZABLE_YEAR_PLOTS
+    if supported:
+        return gr.update(visible=True)
+    return gr.update(visible=False, value=False)
+
+
+def interruptions_per_party_year(
+    start_year: int, end_year: int, normalize_seats: bool,
+) -> pd.DataFrame:
+    """Aggregate interruptions per year/party, with explicit zeros for area charts."""
+    selected = DATA.interruptions.loc[
+        DATA.interruptions["year"].between(start_year, end_year)
+    ]
+    if normalize_seats:
+        counts = selected.groupby(["year", "comment_party"])["seat_weight"].sum(min_count=1)
+    else:
+        counts = selected.groupby(["year", "comment_party"]).size()
     parties = [party for party in PARTIES if party in counts.index.get_level_values("comment_party")]
     years = sorted(counts.index.get_level_values("year").unique())
     full_index = pd.MultiIndex.from_product([years, parties], names=["year", "comment_party"])
     return counts.reindex(full_index, fill_value=0).rename("interruptions").reset_index()
 
 
-def render_year_plot(plot_type: str, start_year: int, end_year: int) -> go.Figure:
+def render_year_plot(
+    plot_type: str, start_year: int, end_year: int, normalize_seats: bool,
+) -> go.Figure:
     start_year, end_year = int(start_year), int(end_year)
     if start_year > end_year:
         return empty_figure("Das Startjahr muss vor dem Endjahr liegen.")
@@ -174,26 +222,235 @@ def render_year_plot(plot_type: str, start_year: int, end_year: int) -> go.Figur
                          labels={"year": "Jahr", "interruptions": "Zwischenrufe"})
         return finish_figure(figure, "Zwischenrufe")
 
-    frame = interruptions_per_party_year(start_year, end_year)
+    frame = interruptions_per_party_year(start_year, end_year, normalize_seats)
     if frame.empty:
         return empty_figure("Für diesen Zeitraum liegen keine Zwischenrufe vor.")
-    labels = {"year": "Jahr", "interruptions": "Zwischenrufe", "comment_party": "Partei"}
+    unit = "Zwischenrufe je Sitz" if normalize_seats else "Zwischenrufe"
+    labels = {"year": "Jahr", "interruptions": unit, "comment_party": "Partei"}
     plot_style = {"x": "year", "y": "interruptions", "color": "comment_party", "labels": labels,
                   "category_orders": {"comment_party": PARTIES},
                   "color_discrete_map": PARTY_COLORS}
     if plot_type == INTERRUPTIONS_STACKED:
-        figure = px.area(frame, title="Zwischenrufe nach Partei und Jahr (gestapelt)", **plot_style)
-        return finish_figure(figure, "Zwischenrufe")
+        title = "Zwischenrufe nach Partei und Jahr (gestapelt)"
+        if normalize_seats:
+            title = "Zwischenrufe je Sitz nach Partei und Jahr (gestapelt)"
+        figure = px.area(frame, title=title, **plot_style)
+        figure.update_traces(
+            hovertemplate=("%{y:.3f} Zwischenrufe je Sitz" if normalize_seats
+                           else "%{y:,.0f} Zwischenrufe") + "<extra>%{fullData.name}</extra>"
+        )
+        return finish_figure(figure, unit)
     if plot_type == INTERRUPTIONS_SHARE:
+        title = "Anteil der Parteien an allen Zwischenrufen pro Jahr"
+        if normalize_seats:
+            title = "Anteil der Parteien an den sitznormalisierten Zwischenrufraten"
         figure = px.area(frame, groupnorm="percent",
-                         title="Anteil der Parteien an allen Zwischenrufen pro Jahr", **plot_style)
+                         title=title, **plot_style)
         figure.update_traces(hovertemplate="%{y:.1f} %<extra>%{fullData.name}</extra>")
-        figure = finish_figure(figure, "Anteil der Zwischenrufe (%)")
+        share_unit = ("Anteil der sitznormalisierten Zwischenrufraten (%)"
+                      if normalize_seats else "Anteil der Zwischenrufe (%)")
+        figure = finish_figure(figure, share_unit)
         figure.update_yaxes(range=[0, 100], ticksuffix=" %")
         return figure
 
-    figure = px.line(frame, markers=True, title="Zwischenrufe nach Partei und Jahr", **plot_style)
-    return finish_figure(figure, "Zwischenrufe")
+    title = ("Zwischenrufe je Sitz nach Partei und Jahr"
+             if normalize_seats else "Zwischenrufe nach Partei und Jahr")
+    figure = px.line(frame, markers=True, title=title, **plot_style)
+    figure.update_traces(
+        hovertemplate=("%{y:.3f} Zwischenrufe je Sitz" if normalize_seats
+                       else "%{y:,.0f} Zwischenrufe") + "<extra>%{fullData.name}</extra>"
+    )
+    return finish_figure(figure, unit)
+
+
+def normalized_callout(value: str) -> str:
+    """Normalize a callout for exact-duplicate detection without changing its display."""
+    return re.sub(r"\W+", " ", value.casefold(), flags=re.UNICODE).strip()
+
+
+def rank_negative_unique_callouts(frame: pd.DataFrame, limit: int) -> pd.DataFrame:
+    """Rank likely negative callouts by sentiment and dissimilarity to nearby callouts."""
+    candidates = frame.copy()
+    candidates["comment_text"] = candidates["comment_text"].fillna("").astype(str).str.strip()
+    candidates = candidates.loc[candidates["comment_text"].str.len().ge(4)].copy()
+    candidates = candidates.loc[
+        candidates["comment_name"].fillna("").astype(str).str.strip().ne("<unknown>")
+    ].copy()
+    candidates["normalized_text"] = candidates["comment_text"].map(normalized_callout)
+    candidates = candidates.drop_duplicates("normalized_text", keep="last")
+    if candidates.empty:
+        return candidates
+
+    sentiment_features = SENTIMENT_VECTORIZER.transform(candidates["comment_text"])
+    candidates["negative_probability"] = NEGATIVE_SENTIMENT_MODEL.predict_proba(
+        sentiment_features
+    )[:, 1]
+
+    # Character n-grams handle German compounds, spelling variants, and the
+    # occasional OCR artifact better than word-level token matching.
+    uniqueness_vectorizer = TfidfVectorizer(
+        analyzer="char_wb", ngram_range=(3, 5), min_df=1,
+        max_features=30_000, sublinear_tf=True,
+    )
+    uniqueness_features = uniqueness_vectorizer.fit_transform(candidates["comment_text"])
+    similarities = cosine_similarity(uniqueness_features, dense_output=False)
+    similarities.setdiag(0)
+    candidates["uniqueness"] = 1 - similarities.max(axis=1).toarray().ravel()
+
+    # Require a negative majority probability. Uniqueness then strongly
+    # rewards remarks that are unlike the routine phrases in the same window.
+    candidates = candidates.loc[candidates["negative_probability"].ge(0.5)].copy()
+    candidates["interesting_score"] = (
+        candidates["negative_probability"] * (0.35 + 0.65 * candidates["uniqueness"])
+    )
+    return candidates.nlargest(limit, "interesting_score")
+
+
+def latest_window() -> tuple[pd.Timestamp, pd.Timestamp, pd.DataFrame]:
+    """Return the latest protocol day and the 30 preceding calendar days."""
+    end = DATA.max_date.normalize()
+    start = end - pd.Timedelta(days=30)
+    frame = DATA.interruptions.loc[DATA.interruptions["date"].between(start, end)].copy()
+    return start, end, frame
+
+
+def latest_party_pie(frame: pd.DataFrame) -> go.Figure:
+    counts = (
+        frame.groupby("comment_party").size().rename("interruptions").reset_index()
+    )
+    counts["party_order"] = counts["comment_party"].map(
+        {party: index for index, party in enumerate(PARTIES)}
+    )
+    counts = counts.sort_values("party_order")
+    figure = px.pie(
+        counts,
+        names="comment_party",
+        values="interruptions",
+        color="comment_party",
+        color_discrete_map=PARTY_COLORS,
+        category_orders={"comment_party": PARTIES},
+        title="Anteil der Zwischenrufe nach Partei",
+        hole=0.35,
+    )
+    figure.update_traces(
+        textposition="inside",
+        textinfo="percent+label",
+        hovertemplate="%{label}<br>%{value:,} Zwischenrufe<br>%{percent}<extra></extra>",
+    )
+    figure.update_layout(
+        template=PLOT_TEMPLATE,
+        height=520,
+        legend_title_text="Partei der Zwischenrufenden",
+        margin={"l": 25, "r": 25, "t": 75, "b": 25},
+    )
+    return figure
+
+
+LATEST_PARTY_SHARE = "Parteianteile"
+LATEST_DAILY_STACK = "Zwischenrufe pro Tag"
+LATEST_VIEW_CHOICES = [LATEST_PARTY_SHARE, LATEST_DAILY_STACK]
+INITIAL_CALLOUT_COUNT = 8
+CALLOUT_PAGE_SIZE = 5
+
+
+def latest_daily_stacked_bars(
+    frame: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp,
+) -> go.Figure:
+    counts = (
+        frame.groupby(["date", "comment_party"])
+        .size()
+        .rename("interruptions")
+        .reset_index()
+    )
+    figure = px.bar(
+        counts,
+        x="date",
+        y="interruptions",
+        color="comment_party",
+        category_orders={"comment_party": PARTIES},
+        color_discrete_map=PARTY_COLORS,
+        labels={
+            "date": "Datum",
+            "interruptions": "Zwischenrufe",
+            "comment_party": "Partei",
+        },
+        title="Zwischenrufe pro Protokolltag und Partei",
+    )
+    figure.update_traces(
+        hovertemplate=(
+            "%{x|%d.%m.%Y}<br>%{y:,.0f} Zwischenrufe"
+            "<extra>%{fullData.name}</extra>"
+        )
+    )
+    figure.update_layout(
+        template=PLOT_TEMPLATE,
+        height=520,
+        barmode="stack",
+        hovermode="x unified",
+        legend_title_text="Partei der Zwischenrufenden",
+        margin={"l": 55, "r": 25, "t": 75, "b": 55},
+    )
+    # A continuous date axis preserves gaps between sittings. Limit labels to
+    # roughly weekly ticks; the exact date remains available in the hover.
+    figure.update_xaxes(
+        range=[start - pd.Timedelta(days=1), end + pd.Timedelta(days=1)],
+        tickformat="%d.%m.",
+        dtick=7 * 24 * 60 * 60 * 1_000,
+        tickangle=0,
+    )
+    figure.update_yaxes(title="Zwischenrufe", rangemode="tozero")
+    return figure
+
+
+def latest_figure(
+    frame: pd.DataFrame, view: str, start: pd.Timestamp, end: pd.Timestamp,
+) -> go.Figure:
+    if view == LATEST_DAILY_STACK:
+        return latest_daily_stacked_bars(frame, start, end)
+    return latest_party_pie(frame)
+
+
+def callouts_markdown(callouts: pd.DataFrame) -> str:
+    if callouts.empty:
+        return "*Keine ausreichend negativen, eigenständigen Zwischenrufe gefunden.*"
+    entries = []
+    for _, row in callouts.iterrows():
+        text = html.escape(row["comment_text"])
+        caller = html.escape(str(row["comment_name"]))
+        party = html.escape(str(row["comment_party"]))
+        interrupted = html.escape(str(row["interrupted_speaker"]))
+        interrupted_party = html.escape(str(row["interrupted_speaker_party"]))
+        date = row["date"].date().strftime("%d.%m.%Y")
+        negative = row["negative_probability"] * 100
+        uniqueness = row["uniqueness"] * 100
+        entries.append(
+            f"> **„{text}“**\n>\n"
+            f"> {date} · **{caller} ({party})** während der Rede von "
+            f"**{interrupted} ({interrupted_party})**  \n"
+            f"> Modell: {negative:.0f} % negativ · {uniqueness:.0f} % eigenständig"
+        )
+    return "\n\n".join(entries)
+
+
+def render_latest_board(view: str, callout_count: int) -> tuple[str, go.Figure, str]:
+    start, end, frame = latest_window()
+    if frame.empty:
+        return "Keine Daten im jüngsten Zeitraum.", empty_figure("Keine Daten."), ""
+    callouts = rank_negative_unique_callouts(frame, int(callout_count))
+    summary = (
+        f"### Letzte 30 Tage des Bundestags\n"
+        f"Neuester verfügbarer Protokolltag: **{end:%d.%m.%Y}** · "
+        f"Zeitraum: **{start:%d.%m.%Y}–{end:%d.%m.%Y}** · "
+        f"**{len(frame):,}** Zwischenrufe"
+    ).replace(",", ".")
+    return summary, latest_figure(frame, view, start, end), callouts_markdown(callouts)
+
+
+def load_more_latest_callouts(callout_count: int) -> tuple[int, str]:
+    new_count = int(callout_count) + CALLOUT_PAGE_SIZE
+    _, _, frame = latest_window()
+    callouts = rank_negative_unique_callouts(frame, new_count)
+    return new_count, callouts_markdown(callouts)
 
 
 def parse_date_range(start_value: str, end_value: str) -> tuple[pd.Timestamp, pd.Timestamp]:
@@ -247,17 +504,17 @@ def interruption_matrix(frame: pd.DataFrame, normalize_seats: bool,
                         normalize_sentences: bool,
                         selected_parties: list[str], show_values: bool) -> go.Figure:
     if normalize_seats:
-        matrix = frame.pivot_table(index="interrupted_speaker_party", columns="comment_party",
+        matrix = frame.pivot_table(index="comment_party", columns="interrupted_speaker_party",
                                    values="seat_weight", aggfunc="sum")
         matrix = matrix.reindex(index=selected_parties, columns=selected_parties)
     else:
-        matrix = pd.crosstab(frame["interrupted_speaker_party"], frame["comment_party"])
+        matrix = pd.crosstab(frame["comment_party"], frame["interrupted_speaker_party"])
         matrix = matrix.reindex(index=selected_parties, columns=selected_parties, fill_value=0).astype(float)
     if normalize_sentences:
         sentence_counts = (frame.drop_duplicates("speech_id")
                            .groupby("interrupted_speaker_party")["speech_len_sents"].sum()
                            .reindex(selected_parties).replace(0, np.nan))
-        matrix = matrix.div(sentence_counts, axis="index") * 1_000
+        matrix = matrix.div(sentence_counts, axis="columns") * 1_000
 
     active_rows = matrix.notna().any(axis=1) & matrix.fillna(0).ne(0).any(axis=1)
     active_columns = matrix.notna().any(axis=0) & matrix.fillna(0).ne(0).any(axis=0)
@@ -275,7 +532,7 @@ def interruption_matrix(frame: pd.DataFrame, normalize_seats: bool,
         matrix, color_continuous_scale="Blues", aspect="equal",
         text_auto=".2f" if show_values else False,
         title=f"Wer unterbricht wen? · {units}",
-        labels={"x": "Partei der Zwischenrufenden", "y": "Partei der Redenden", "color": units},
+        labels={"x": "Rede von …", "y": "Zwischenruf von …", "color": units},
     )
     # The x-axis sits on top, so its title needs room below the figure title.
     figure.update_layout(
@@ -385,6 +642,7 @@ CSS = f"""
 .plot-panel .plot-container {{min-height: 600px !important;}}
 .heatmap-plot {{max-width: {HEATMAP_WIDTH_PX}px !important; margin-left: 0 !important; margin-right: auto !important;}}
 .heatmap-plot .plot-container {{min-height: 0 !important;}}
+.callout-list blockquote {{border-left: 4px solid #c9ced6; margin: 14px 0; padding: 10px 14px; background: #f7f8fa;}}
 """
 
 
@@ -419,6 +677,11 @@ def build_app() -> gr.Blocks:
                             YEAR_PLOT_CHOICES, value=INTERRUPTIONS_BY_PARTY, label="Darstellung")
                         start_year = gr.Slider(MIN_YEAR, MAX_YEAR, value=MIN_YEAR, step=1, label="Von Jahr")
                         end_year = gr.Slider(MIN_YEAR, MAX_YEAR, value=MAX_YEAR, step=1, label="Bis Jahr")
+                        year_normalize_seats = gr.Checkbox(
+                            value=False,
+                            label="Nach Sitzen der zwischenrufenden Partei normalisieren",
+                            info="Jeder Zwischenruf zählt 1 / Sitzzahl der Partei im jeweiligen Bundestag.",
+                        )
                         refresh_year = gr.Button("Diagramm aktualisieren", variant="primary")
                     with gr.Column(elem_classes="plot-panel"):
                         year_plot = gr.Plot(show_label=False)
@@ -449,20 +712,72 @@ def build_app() -> gr.Blocks:
                     with gr.Column(elem_classes="plot-panel"):
                         detail_summary = gr.Markdown()
                         detail_plot = gr.Plot(show_label=False, elem_classes=["heatmap-plot"])
+            with gr.Tab("Letzte 30 Tage des BT"):
+                latest_callout_count = gr.State(value=INITIAL_CALLOUT_COUNT)
+                latest_summary = gr.Markdown()
+                with gr.Row(elem_classes="desktop-row"):
+                    with gr.Column(scale=1, elem_classes="control-panel"):
+                        gr.Markdown(
+                            "Die Auswahl endet am neuesten verfügbaren Protokolltag und umfasst "
+                            "die 30 vorhergehenden Kalendertage."
+                        )
+                        latest_view = gr.Radio(
+                            choices=LATEST_VIEW_CHOICES,
+                            value=LATEST_PARTY_SHARE,
+                            label="Darstellung",
+                        )
+                        refresh_latest = gr.Button("Ansicht aktualisieren", variant="primary")
+                    with gr.Column(scale=2, elem_classes="plot-panel"):
+                        latest_plot = gr.Plot(show_label=False)
+                gr.Markdown("## Interessante Zurufe")
+                gr.Markdown(
+                    "Die Auswahl der Zwischenrufe erfolgt automatisiert "
+                    "und basiert auf klassischem NLP (pre-Transformer). Sie kann Ironie oder fehlenden Kontext übersehen.",
+                    elem_classes="dashboard-subtitle",
+                )
+                latest_callouts = gr.Markdown(elem_classes="callout-list")
+                load_more_callouts = gr.Button("Mehr Zwischenrufe laden")
 
         gr.Markdown(SOURCE_NOTICE, elem_classes="source-notice")
 
-        year_inputs = [year_plot_type, start_year, end_year]
+        year_inputs = [year_plot_type, start_year, end_year, year_normalize_seats]
         detail_inputs = [detail_plot_type, custom_dates, period, start_date, end_date,
                          normalize_seats, normalize_sentences, selected_parties, show_values]
+        latest_inputs = [latest_view, latest_callout_count]
+        latest_outputs = [latest_summary, latest_plot, latest_callouts]
+        refresh_latest.click(
+            render_latest_board,
+            inputs=latest_inputs,
+            outputs=latest_outputs,
+        )
+        latest_view.change(
+            render_latest_board,
+            inputs=latest_inputs,
+            outputs=latest_outputs,
+        )
+        load_more_callouts.click(
+            load_more_latest_callouts,
+            inputs=latest_callout_count,
+            outputs=[latest_callout_count, latest_callouts],
+        )
         refresh_year.click(render_year_plot, inputs=year_inputs, outputs=year_plot)
         refresh_detail.click(render_detail_plot, inputs=detail_inputs, outputs=[detail_plot, detail_summary])
         dashboard.load(render_year_plot, inputs=year_inputs, outputs=year_plot)
         dashboard.load(render_detail_plot, inputs=detail_inputs, outputs=[detail_plot, detail_summary])
+        dashboard.load(render_latest_board, inputs=latest_inputs, outputs=latest_outputs)
 
-        year_plot_type.change(render_year_plot, inputs=year_inputs, outputs=year_plot)
+        year_plot_type.change(
+            update_year_seat_toggle,
+            inputs=year_plot_type,
+            outputs=year_normalize_seats,
+        ).then(
+            render_year_plot,
+            inputs=year_inputs,
+            outputs=year_plot,
+        )
         start_year.release(render_year_plot, inputs=year_inputs, outputs=year_plot)
         end_year.release(render_year_plot, inputs=year_inputs, outputs=year_plot)
+        year_normalize_seats.change(render_year_plot, inputs=year_inputs, outputs=year_plot)
 
         for control in [detail_plot_type, custom_dates]:
             control.change(

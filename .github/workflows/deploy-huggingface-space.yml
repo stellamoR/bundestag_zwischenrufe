@@ -36,6 +36,7 @@ jobs:
           cp II_statistical_analysis/gradio/README.space.md .space-deploy/README.md
           cp _data/speeches.csv .space-deploy/_data/speeches.csv
           cp _data/interruptions.csv .space-deploy/_data/interruptions.csv
+          cp _data/interruptions_labeled.csv .space-deploy/_data/interruptions_labeled.csv
           cp _data/bt_period_data.json .space-deploy/_data/bt_period_data.json
 
       - name: Install Hugging Face uploader
@@ -49,4 +50,3 @@ jobs:
           --repo-type space
           --delete "*"
           --commit-message "Deploy from GitHub ${{ github.sha }}"
-
