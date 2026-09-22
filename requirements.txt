@@ -1,0 +1,33 @@
+# Aggregated dependencies of all scripts and notebooks in this repository.
+# Python 3.11
+
+# --- I_data_acquisition ---
+requests            # protocol/MdB downloads
+tqdm                # progress bars
+
+# --- II_statistical_analysis ---
+pandas
+numpy
+matplotlib
+seaborn
+plotly
+wordcloud           # 01_WordClouds_Speeches
+nltk                # tokenize / ngrams
+spacy               # spacy.lang.de.German tokenizer
+ipywidgets          # interactive notebook widgets
+
+# --- II_statistical_analysis/gradio (app.py) ---
+gradio
+gradio_calendar
+
+# --- III_sentiment_analysis ---
+torch
+transformers>=4.40,<5        # 4.x Trainer/TrainingArguments API used in the notebooks
+datasets<4
+germansentiment
+scikit-learn
+scipy
+
+# --- notebook runtime ---
+jupyter
+ipykernel
