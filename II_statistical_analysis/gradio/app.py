@@ -25,11 +25,11 @@ REPO_ROOT = APP_DIR.parents[1]
 DATA_DIR = REPO_ROOT / "_data"
 LABELED_INTERRUPTION_PATH = DATA_DIR / "interruptions_labeled.csv"
 
-PARTIES = ["CDU/CSU", "SPD", "GRÜNE", "FDP", "AfD", "DIE LINKE", "fraktionslos"]
+PARTIES = ["CDU/CSU", "SPD", "GRÜNE", "FDP", "AfD", "DIE LINKE", "BSW", "fraktionslos"]
 PARTY_COLORS = {
     "CDU/CSU": "#232323", "SPD": "#e3000f", "GRÜNE": "#46962b",
     "FDP": "#ffed00", "AfD": "#009ee0", "DIE LINKE": "#be3075",
-    "fraktionslos": "#7a7a7a",
+    "BSW": "#7d254f", "fraktionslos": "#7a7a7a",
 }
 PLOT_TEMPLATE = "plotly_white"
 HEATMAP = "Heatmap: Wer unterbricht wen?"

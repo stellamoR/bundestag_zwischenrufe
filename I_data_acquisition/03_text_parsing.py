@@ -22,8 +22,8 @@ DEFAULT_PARSED = DATA_DIR / "parsed_protocols"
 DEFAULT_MEMBERS = DATA_DIR / "abgeordnete.csv"
 DEFAULT_MEMBERS_XML = DATA_DIR / "MDB_STAMMDATEN.XML"
 
-PARTIES = ["CDU/CSU", "GRÜNE", "SPD", "FDP", "AfD", "DIE LINKE", "fraktionslos"]
-PARTY_PATTERN = r"(CDU\/CSU|CSU|CDU|GRÜNE|FDP|AfD|SPD|DIE LINKE|fraktionslos)"
+PARTIES = ["CDU/CSU", "GRÜNE", "SPD", "FDP", "AfD", "DIE LINKE", "BSW", "fraktionslos"]
+PARTY_PATTERN = r"(CDU\/CSU|CSU|CDU|GRÜNE|FDP|AfD|SPD|DIE LINKE|BSW|fraktionslos)"
 LEGACY_NAME_PATTERN = (
     r"((?:Dr\.\s)?(?:\w+(?:-\w+)?\s)(?:\w+\.\s)?(?:von\s)?\w+(?:-\w+)?)"
 )
@@ -114,6 +114,8 @@ def normalize_party(value: str) -> str | None:
         return "DIE LINKE"
     if "ALTERNATIVE FÜR DEUTSCHLAND" in upper or upper == "AFD":
         return "AfD"
+    if "BSW" in upper or "SAHRA WAGENKNECHT" in upper:
+        return "BSW"
     if "FRAKTIONSLOS" in upper:
         return "fraktionslos"
     return None
@@ -319,6 +321,14 @@ def load_text(path: Path) -> str | None:
         text,
     )
     text = re.sub(r"F\.D\.P\.", "FDP", text)
+    # The group's full name appears in running text; its members are marked "BSW".
+    text = re.sub(
+        r"(?:Gruppe\s+)?BSW\s*[-–—]\s*Bündnis\s+Sahra\s+Wagen-?\s*knecht"
+        r"(?:\s*[-–—]\s*Vernunft\s+und\s+Gerechtigkeit)?|"
+        r"Bündnis\s+Sahra\s+Wagen-?\s*knecht(?:\s*[-–—]\s*Vernunft\s+und\s+Gerechtigkeit)?",
+        "BSW",
+        text,
+    )
     alliance_pattern = re.compile(
         r"(BÜND(-\n?)?NIS((-\n?)?SES)?\s*?90/\s*(DIE\s*?)?GRÜ(-\n?)?NEN?)",
         flags=re.UNICODE | re.IGNORECASE,
@@ -538,33 +548,38 @@ def build_csv_files(
     nlp.add_pipe("sentencizer")
     comment_rows: list[list[Any]] = []
     speech_rows: list[list[Any]] = []
-    speech_id = 0
-
     for protocol_path in tqdm(sorted(parsed_dir.glob("*.json")), desc="Building CSVs"):
         with protocol_path.open("r", encoding="utf-8") as input_file:
             protocol = json.load(input_file)
         date = protocol_path.stem[7:]
-        for speech in protocol:
-            speech_id += 1
+        period, number, _date = protocol_path.stem.split("_", maxsplit=2)
+        protocol_id = f"{int(period)}/{int(number)}"
+        for speech_position, speech in enumerate(protocol, start=1):
+            speech_id = f"{protocol_id}:{speech_position:04d}"
             speaker = speech["speaker"]
             sentence_count = sum(1 for _ in nlp(speech["text"]).sents)
             speech_rows.append(
-                [speaker["party"], speaker["name"], speech["applause"], sentence_count, date, speech_id]
+                [speaker["party"], speaker["name"], speech["applause"], sentence_count,
+                 date, protocol_id, speech_id]
             )
             for comment in speech.get("comments", []):
                 commentator = comment["commentator"]
                 comment_rows.append(
                     [
                         comment["text"], commentator["party"], commentator["name"],
-                        speaker["party"], speaker["name"], date, sentence_count, speech_id,
+                        speaker["party"], speaker["name"], date, sentence_count,
+                        protocol_id, speech_id,
                     ]
                 )
 
     interruption_columns = [
         "comment_text", "comment_party", "comment_name", "interrupted_speaker_party",
-        "interrupted_speaker", "date", "speech_len_sents", "speech_id",
+        "interrupted_speaker", "date", "speech_len_sents", "protocol_id", "speech_id",
     ]
-    speech_columns = ["speaker_party", "speaker", "applause", "speech_len_sents", "date", "speech_id"]
+    speech_columns = [
+        "speaker_party", "speaker", "applause", "speech_len_sents", "date",
+        "protocol_id", "speech_id",
+    ]
     interruptions = pd.DataFrame(comment_rows, columns=interruption_columns)
     speeches = pd.DataFrame(speech_rows, columns=speech_columns)
 

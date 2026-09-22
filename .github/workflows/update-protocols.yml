@@ -1,0 +1,76 @@
+name: Update Bundestag protocols
+
+on:
+  schedule:
+    - cron: "23 04 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: huggingface-space-deployment
+  cancel-in-progress: false
+
+jobs:
+  update-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: I_data_acquisition/requirements.txt
+
+      - name: Install ingestion dependencies
+        run: python -m pip install -r I_data_acquisition/requirements.txt
+
+      - name: Download and parse recent protocols
+        run: python I_data_acquisition/04_update_latest_protocols.py
+
+      - name: Commit updated dashboard data
+        id: data
+        shell: bash
+        run: |
+          if git diff --quiet -- _data/speeches.csv _data/interruptions.csv; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add _data/speeches.csv _data/interruptions.csv
+          git commit -m "Update Bundestag protocols"
+          git push origin HEAD:main
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Assemble Space files
+        if: steps.data.outputs.changed == 'true'
+        shell: bash
+        run: |
+          mkdir -p .space-deploy/II_statistical_analysis/gradio
+          mkdir -p .space-deploy/_data
+          cp II_statistical_analysis/gradio/app.py .space-deploy/II_statistical_analysis/gradio/app.py
+          cp II_statistical_analysis/gradio/requirements.txt .space-deploy/requirements.txt
+          cp II_statistical_analysis/gradio/README.space.md .space-deploy/README.md
+          cp _data/speeches.csv .space-deploy/_data/speeches.csv
+          cp _data/interruptions.csv .space-deploy/_data/interruptions.csv
+          cp _data/interruptions_labeled.csv .space-deploy/_data/interruptions_labeled.csv
+          cp _data/bt_period_data.json .space-deploy/_data/bt_period_data.json
+
+      - name: Deploy refreshed data to Hugging Face
+        if: steps.data.outputs.changed == 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python -m pip install --upgrade huggingface_hub hf_xet
+          hf upload stellamo/bundestag_stats .space-deploy . \
+            --repo-type space \
+            --delete "*" \
+            --commit-message "Daily protocol update from GitHub ${{ github.sha }}"

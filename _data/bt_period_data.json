@@ -1,131 +1,141 @@
 {
-    "12":{
+    "12": {
         "start_date": "1991-03-12",
         "end_date": "1994-09-21",
-        "num_seats":{ 
+        "num_seats": {
             "CDU/CSU": 317,
             "SPD": 239,
-            "FDP": 	78,
-            "DIE LINKE": 	15,
+            "FDP": 78,
+            "DIE LINKE": 15,
             "GRÜNE": 7,
             "AfD": 0,
+            "BSW": 0,
             "fraktionslos": 6
         }
     },
-    "13":{
+    "13": {
         "start_date": "1994-11-10",
         "end_date": "1998-10-16",
-        "num_seats":{ 
+        "num_seats": {
             "CDU/CSU": 295,
             "SPD": 251,
-            "FDP": 	47,
-            "DIE LINKE": 	30,
+            "FDP": 47,
+            "DIE LINKE": 30,
             "GRÜNE": 48,
             "AfD": 0,
+            "BSW": 0,
             "fraktionslos": 1
         }
     },
-    "14":{
+    "14": {
         "start_date": "1998-10-26",
         "end_date": "2002-09-13",
-        "num_seats":{ 
+        "num_seats": {
             "CDU/CSU": 245,
             "SPD": 293,
-            "FDP": 	43,
-            "DIE LINKE": 	37,
+            "FDP": 43,
+            "DIE LINKE": 37,
             "GRÜNE": 47,
             "AfD": 0,
-            "fraktionslos": 	1
+            "BSW": 0,
+            "fraktionslos": 1
         }
     },
-    "15":{
+    "15": {
         "start_date": "2002-10-17",
         "end_date": "2005-09-28",
-        "num_seats":{ 
+        "num_seats": {
             "CDU/CSU": 247,
             "SPD": 249,
-            "FDP": 	47,
+            "FDP": 47,
             "DIE LINKE": 0,
             "GRÜNE": 55,
             "AfD": 0,
+            "BSW": 0,
             "fraktionslos": 3
         }
     },
-    "16":{
+    "16": {
         "start_date": "2005-10-18",
         "end_date": "2009-09-08",
-        "num_seats":{ 
+        "num_seats": {
             "CDU/CSU": 222,
-            "SPD": 	221,
-            "FDP": 		61,
-            "DIE LINKE": 	53,
-            "GRÜNE": 	51,
+            "SPD": 221,
+            "FDP": 61,
+            "DIE LINKE": 53,
+            "GRÜNE": 51,
             "AfD": 0,
+            "BSW": 0,
             "fraktionslos": 3
         }
     },
-    "17":{
+    "17": {
         "start_date": "2009-10-27",
         "end_date": "2013-09-03",
-        "num_seats":{ 
+        "num_seats": {
             "CDU/CSU": 237,
-            "SPD": 	146,
-            "FDP": 		93,
-            "DIE LINKE": 		75,
-            "GRÜNE": 		68,
+            "SPD": 146,
+            "FDP": 93,
+            "DIE LINKE": 75,
+            "GRÜNE": 68,
             "AfD": 0,
+            "BSW": 0,
             "fraktionslos": 1
         }
     },
-    "18":{
+    "18": {
         "start_date": "2013-10-22",
         "end_date": "2017-09-05",
-        "num_seats":{ 
+        "num_seats": {
             "CDU/CSU": 309,
-            "SPD": 	193,
-            "FDP": 		0,
-            "DIE LINKE": 		64,
-            "GRÜNE": 		63,
+            "SPD": 193,
+            "FDP": 0,
+            "DIE LINKE": 64,
+            "GRÜNE": 63,
             "AfD": 0,
-            "fraktionslos": 	1
+            "BSW": 0,
+            "fraktionslos": 1
         }
     },
-    "19":{
+    "19": {
         "start_date": "2017-10-24",
         "end_date": "2021-09-07",
-        "num_seats":{ 
+        "num_seats": {
             "CDU/CSU": 245,
-            "SPD": 	152,
-            "FDP": 		80,
-            "DIE LINKE": 		68,
-            "GRÜNE": 		67,
+            "SPD": 152,
+            "FDP": 80,
+            "DIE LINKE": 68,
+            "GRÜNE": 67,
             "AfD": 87,
-            "fraktionslos": 	10
+            "BSW": 0,
+            "fraktionslos": 10
         }
     },
-    "20":{
+    "20": {
         "start_date": "2021-10-26",
         "end_date": "2025-03-24",
-        "num_seats":{ 
-            "CDU/CSU": 195,
-            "SPD": 	207,
-            "FDP": 		91,
-            "DIE LINKE": 		28,
-            "GRÜNE": 		118,
-            "AfD": 77,
-            "fraktionslos": 	7
+        "num_seats": {
+            "CDU/CSU": 196,
+            "SPD": 207,
+            "FDP": 90,
+            "DIE LINKE": 28,
+            "GRÜNE": 117,
+            "AfD": 76,
+            "BSW": 10,
+            "fraktionslos": 9
         }
     },
-    "21":{
+    "21": {
         "start_date": "2025-03-25",
         "end_date": "2029-09-01",
-        "num_seats":{ 
+        "num_seats": {
             "CDU/CSU": 208,
             "SPD": 120,
             "FDP": 0,
             "DIE LINKE": 64,
             "GRÜNE": 85,
             "AfD": 152,
+            "BSW": 0,
             "fraktionslos": 0
         }
     }
