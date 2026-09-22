@@ -17,6 +17,11 @@ The app reads `_data/speeches.csv`, `_data/interruptions.csv`, and
 `_data/bt_period_data.json`. Paths are resolved relative to the repository, so
 the launch command also works from another current directory.
 
+`_data/bt_period_data.json` is the single source for Bundestag periods (dates
+and seat counts) for the whole repository — notebooks, parsing scripts, the
+dashboard and the Space deploy workflows all read that one file. Do not add a
+copy next to the app.
+
 ## Lizenz und Datenquellen
 
 Dieses Projekt (Code, aufbereitete Daten und Auswertungen) steht unter der

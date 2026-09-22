@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import sys
 import tempfile
 from datetime import date, timedelta
 from pathlib import Path
@@ -22,6 +23,7 @@ def load_script(name: str, filename: str) -> ModuleType:
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {filename}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -32,17 +34,26 @@ def atomic_csv(frame: pd.DataFrame, destination: Path) -> None:
     temporary.replace(destination)
 
 
-def merge_refresh(existing: pd.DataFrame, fresh: pd.DataFrame) -> pd.DataFrame:
+def merge_refresh(
+    existing: pd.DataFrame,
+    fresh: pd.DataFrame,
+    refreshed_ids: set[str] | None = None,
+    refreshed_dates: set[str] | None = None,
+) -> pd.DataFrame:
     """Replace refreshed protocols, falling back to their dates for legacy rows."""
     if "protocol_id" not in existing:
         existing["protocol_id"] = pd.NA
-    refreshed_ids = set(fresh["protocol_id"].dropna().astype(str))
-    refreshed_dates = set(fresh["date"].astype(str))
+    if refreshed_ids is None:
+        refreshed_ids = set(fresh["protocol_id"].dropna().astype(str))
+    if refreshed_dates is None:
+        refreshed_dates = set(fresh["date"].astype(str))
     old_protocols = existing["protocol_id"].fillna("").astype(str)
     old_dates = existing["date"].astype(str)
     keep = ~old_protocols.isin(refreshed_ids) & ~old_dates.isin(refreshed_dates)
     merged = pd.concat([existing.loc[keep], fresh], ignore_index=True)
-    return merged.sort_values(["date", "speech_id"], kind="stable").reset_index(drop=True)
+    merged["_speech_sort"] = merged["speech_id"].astype(str)
+    merged = merged.sort_values(["date", "_speech_sort"], kind="stable")
+    return merged.drop(columns="_speech_sort").reset_index(drop=True)
 
 
 def update_recent_protocols(overlap_days: int = 14, end_date: date | None = None) -> int:
@@ -99,8 +110,25 @@ def update_recent_protocols(overlap_days: int = 14, end_date: date | None = None
         if fresh_speeches["speech_id"].duplicated().any():
             raise RuntimeError("The refreshed speech IDs are not unique; refusing to publish.")
 
-        speeches = merge_refresh(existing_speeches, fresh_speeches)
-        interruptions = merge_refresh(existing_interruptions, fresh_interruptions)
+        expected_protocol_ids = {
+            f"{int(path.stem.split('_')[0])}/{int(path.stem.split('_')[1])}"
+            for path in protocols.glob("*.json")
+        }
+        parsed_protocol_ids = set(fresh_speeches["protocol_id"].astype(str))
+        missing_protocol_ids = expected_protocol_ids - parsed_protocol_ids
+        if missing_protocol_ids:
+            raise RuntimeError(
+                "No speeches were parsed for protocols "
+                f"{sorted(missing_protocol_ids)}; refusing to publish."
+            )
+        refreshed_dates = set(fresh_speeches["date"].astype(str))
+
+        speeches = merge_refresh(
+            existing_speeches, fresh_speeches, parsed_protocol_ids, refreshed_dates
+        )
+        interruptions = merge_refresh(
+            existing_interruptions, fresh_interruptions, parsed_protocol_ids, refreshed_dates
+        )
         if len(speeches) < len(existing_speeches) * 0.99:
             raise RuntimeError("Speech count dropped unexpectedly; refusing to publish.")
         if len(interruptions) < len(existing_interruptions) * 0.99:
@@ -125,4 +153,3 @@ def parse_args() -> argparse.Namespace:
 if __name__ == "__main__":
     arguments = parse_args()
     update_recent_protocols(arguments.overlap_days, arguments.end_date)
-
