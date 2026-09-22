@@ -47,6 +47,17 @@ CALLOUT_PATTERN = re.compile(
     r"[-–—\s\(]Zuruf .*?" rf"{PARTY_PATTERN}:\s" r"([\s\S]*?)[-–—\)]\s",
     flags=re.UNICODE,
 )
+# Some annotations identify a caller but do not transcribe anything said, for
+# example ``(Zuruf der Abg. Sonja Lemke [DIE LINKE])``.  Keep the complete
+# parenthetical here; names inside it are resolved against the period roster.
+CALLER_ONLY_ZURUF_PATTERN = re.compile(
+    r"\([^()\r]{0,500}\bZurufe?\b[^()\r]{0,500}\)",
+    flags=re.UNICODE,
+)
+CALLER_ONLY_PARTY_PATTERN = re.compile(
+    rf"\[(?P<bracket_party>{PARTY_PATTERN})\]|(?P<plain_party>{PARTY_PATTERN})",
+    flags=re.UNICODE,
+)
 APPLAUSE_PATTERN = re.compile(
     r"[-–—\s\(]Beifall[\s\S]*?[-–—\)]",
     flags=re.UNICODE,
@@ -378,6 +389,47 @@ def comments_from_text(text: str, resolver: MemberResolver) -> list[dict[str, An
                 "preceding_context": text[: match.start()],
             }
         )
+    for match in CALLER_ONLY_ZURUF_PATTERN.finditer(normalized_text):
+        annotation = match.group(0)
+        zuruf = re.search(r"\bZurufe?\b", annotation)
+        if zuruf is None or ":" in annotation[zuruf.end() :]:
+            # Spoken callouts are handled by the two extractors above.
+            continue
+
+        named_comments = 0
+        for party_match in CALLER_ONLY_PARTY_PATTERN.finditer(annotation, zuruf.end()):
+            party = party_match.group("bracket_party")
+            if party is None:
+                continue
+            party = "CDU/CSU" if party in {"CDU", "CSU"} else party
+            raw_field = annotation[zuruf.end() : party_match.start()]
+            resolution = resolver.resolve(raw_field, party)
+            if resolution is None:
+                continue
+            comments.append(
+                {
+                    "commentator": {"name": resolution.name, "party": party},
+                    "text": "",
+                    "preceding_context": text[: match.start()],
+                }
+            )
+            named_comments += 1
+
+        if named_comments == 0:
+            # Party-only forms such as ``(Zurufe von der AfD)`` have no
+            # individual to resolve.  They still represent a caller-only
+            # interruption, just like generic spoken callouts do.
+            party_match = CALLER_ONLY_PARTY_PATTERN.search(annotation, zuruf.end())
+            if party_match:
+                party = party_match.group("bracket_party") or party_match.group("plain_party")
+                party = "CDU/CSU" if party in {"CDU", "CSU"} else party
+                comments.append(
+                    {
+                        "commentator": {"name": "<unknown>", "party": party},
+                        "text": "",
+                        "preceding_context": text[: match.start()],
+                    }
+                )
     return comments
 
 
@@ -416,7 +468,6 @@ def parse_protocol(
             "applause": applause_from_text(speech_text),
         }
         if party not in PARTIES:
-            print(f"Speaker not found in {source.name}: {name} ({party})")
             missing_speakers.append((source.name, name, party))
             continue
 
@@ -447,10 +498,17 @@ def parse_all_protocols(
     parsed_dir: Path,
     members_path: Path,
     members_xml_path: Path,
+    start_from: str | None = None,
 ) -> list[tuple[str, str, str]]:
     members = load_members(members_path)
     names_by_period, parties_by_period = roster_by_period(members_xml_path)
     sources = sorted(protocol_dir.glob("*.json"))
+    if start_from:
+        start_name = start_from if start_from.endswith(".json") else f"{start_from}.json"
+        matching_sources = [source for source in sources if source.name == start_name]
+        if not matching_sources:
+            raise ValueError(f"--start-from protocol not found: {start_name}")
+        sources = sources[sources.index(matching_sources[0]) :]
     missing_speakers: list[tuple[str, str, str]] = []
     for source in tqdm(sources, desc="Parsing protocols"):
         period = protocol_period(source)
@@ -535,6 +593,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--parsed-dir", type=Path, default=DEFAULT_PARSED)
     parser.add_argument("--members", type=Path, default=DEFAULT_MEMBERS)
     parser.add_argument("--members-xml", type=Path, default=DEFAULT_MEMBERS_XML)
+    parser.add_argument(
+        "--start-from",
+        help="Start parsing inclusively at this protocol stem or filename",
+    )
     parser.add_argument("--interruptions", type=Path, default=DATA_DIR / "interruptions.csv")
     parser.add_argument("--speeches", type=Path, default=DATA_DIR / "speeches.csv")
     parser.add_argument("--skip-parsing", action="store_true", help="Only rebuild CSVs from parsed JSON")
@@ -549,5 +611,6 @@ if __name__ == "__main__":
             arguments.parsed_dir,
             arguments.members,
             arguments.members_xml,
+            arguments.start_from,
         )
     build_csv_files(arguments.parsed_dir, arguments.interruptions, arguments.speeches)
