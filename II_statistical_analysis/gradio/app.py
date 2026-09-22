@@ -6,6 +6,7 @@ import json
 import inspect
 import html
 import re
+from urllib.parse import quote
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -307,8 +308,8 @@ def normalized_callout(value: str) -> str:
     return re.sub(r"\W+", " ", value.casefold(), flags=re.UNICODE).strip()
 
 
-def rank_negative_unique_callouts(frame: pd.DataFrame, limit: int) -> pd.DataFrame:
-    """Rank likely negative callouts by sentiment and dissimilarity to nearby callouts."""
+def rank_mixed_unique_callouts(frame: pd.DataFrame, limit: int) -> pd.DataFrame:
+    """Select a diverse mix of roughly 80% negative and 20% positive callouts."""
     candidates = frame.copy()
     candidates["comment_text"] = candidates["comment_text"].fillna("").astype(str).str.strip()
     candidates = candidates.loc[candidates["comment_text"].str.len().ge(4)].copy()
@@ -336,13 +337,33 @@ def rank_negative_unique_callouts(frame: pd.DataFrame, limit: int) -> pd.DataFra
     similarities.setdiag(0)
     candidates["uniqueness"] = 1 - similarities.max(axis=1).toarray().ravel()
 
-    # Require a negative majority probability. Uniqueness then strongly
-    # rewards remarks that are unlike the routine phrases in the same window.
-    candidates = candidates.loc[candidates["negative_probability"].ge(0.5)].copy()
-    candidates["interesting_score"] = (
-        candidates["negative_probability"] * (0.35 + 0.65 * candidates["uniqueness"])
-    )
-    return candidates.nlargest(limit, "interesting_score")
+    diversity = 0.35 + 0.65 * candidates["uniqueness"]
+    candidates["negative_score"] = candidates["negative_probability"] * diversity
+    candidates["positive_score"] = (1 - candidates["negative_probability"]) * diversity
+
+    positive_count = min(max(1, round(limit * 0.2)), limit)
+    negative_count = limit - positive_count
+    negative = candidates.loc[candidates["negative_probability"].ge(0.5)].nlargest(
+        negative_count, "negative_score")
+    positive = candidates.loc[candidates["negative_probability"].lt(0.5)].nlargest(
+        positive_count, "positive_score")
+
+    # Put a positive example roughly after every four negative ones rather than
+    # collecting both groups in visibly separate blocks.
+    selected_rows = []
+    negative_rows = list(negative.iterrows())
+    positive_rows = list(positive.iterrows())
+    while negative_rows or positive_rows:
+        selected_rows.extend(negative_rows[:4])
+        negative_rows = negative_rows[4:]
+        if positive_rows:
+            selected_rows.append(positive_rows.pop(0))
+    selected = candidates.loc[[index for index, _row in selected_rows]]
+    if len(selected) < limit:
+        remaining = candidates.drop(index=selected.index)
+        fallback_score = remaining[["negative_score", "positive_score"]].max(axis=1)
+        selected = pd.concat([selected, remaining.loc[fallback_score.nlargest(limit - len(selected)).index]])
+    return selected.head(limit)
 
 
 def latest_window() -> tuple[pd.Timestamp, pd.Timestamp, pd.DataFrame]:
@@ -378,7 +399,9 @@ def latest_party_pie(frame: pd.DataFrame) -> go.Figure:
     )
     figure.update_layout(
         template=PLOT_TEMPLATE,
-        height=350,
+        width=500,
+        height=400,
+        autosize=False,
         legend_title_text="Partei der Zwischenrufenden",
         margin={"l": 25, "r": 25, "t": 75, "b": 25},
     )
@@ -423,7 +446,7 @@ def latest_daily_stacked_bars(
     )
     figure.update_layout(
         template=PLOT_TEMPLATE,
-        height=350,
+        height=400,
         barmode="stack",
         hovermode="x unified",
         legend_title_text="Partei der Zwischenrufenden",
@@ -474,7 +497,7 @@ def latest_figure(
 
 def callouts_markdown(callouts: pd.DataFrame) -> str:
     if callouts.empty:
-        return "*Keine ausreichend negativen, eigenständigen Zwischenrufe gefunden.*"
+        return "*Keine geeigneten Zwischenrufe gefunden.*"
     entries = []
     for _, row in callouts.iterrows():
         text = html.escape(row["comment_text"])
@@ -483,13 +506,21 @@ def callouts_markdown(callouts: pd.DataFrame) -> str:
         interrupted = html.escape(str(row["interrupted_speaker"]))
         interrupted_party = html.escape(str(row["interrupted_speaker_party"]))
         date = row["date"].date().strftime("%d.%m.%Y")
-        negative = row["negative_probability"] * 100
-        uniqueness = row["uniqueness"] * 100
+        if "protocol_id" in row and pd.notna(row["protocol_id"]):
+            period, sitting = str(row["protocol_id"]).split("/", maxsplit=1)
+            source_label = f"BT-PlPr. {int(period)}/{int(sitting)}"
+            source_url = (
+                f"https://dserver.bundestag.de/btp/{int(period)}/"
+                f"{int(period):02d}{int(sitting):03d}.pdf"
+            )
+        else:
+            source_label = "Quelle: Deutscher Bundestag"
+            source_url = "https://www.bundestag.de/services/opendata"
         entries.append(
             f"> **„{text}“**\n>\n"
             f"> {date} · **{caller} ({party})** während der Rede von "
-            f"**{interrupted} ({interrupted_party})**  \n"
-            f"> Modell: {negative:.0f} % negativ · {uniqueness:.0f} % eigenständig"
+            f"**{interrupted} ({interrupted_party})** · "
+            f"[{source_label}]({source_url})"
         )
     return "\n\n".join(entries)
 
@@ -498,7 +529,7 @@ def render_latest_board(view: str, callout_count: int) -> tuple[str, go.Figure, 
     start, end, frame = latest_window()
     if frame.empty:
         return "Keine Daten im jüngsten Zeitraum.", empty_figure("Keine Daten."), ""
-    callouts = rank_negative_unique_callouts(frame, int(callout_count))
+    callouts = rank_mixed_unique_callouts(frame, int(callout_count))
     summary = (
         f"### Bundestag Aktuell\n"
         f"Neuester verfügbarer Protokolltag: **{end:%d.%m.%Y}** · "
@@ -511,8 +542,32 @@ def render_latest_board(view: str, callout_count: int) -> tuple[str, go.Figure, 
 def load_more_latest_callouts(callout_count: int) -> tuple[int, str]:
     new_count = int(callout_count) + CALLOUT_PAGE_SIZE
     _, _, frame = latest_window()
-    callouts = rank_negative_unique_callouts(frame, new_count)
+    callouts = rank_mixed_unique_callouts(frame, new_count)
     return new_count, callouts_markdown(callouts)
+
+
+def correction_issue_link(category: str, reference: str, description: str) -> str:
+    if not description or not description.strip():
+        raise gr.Error("Bitte die vorgeschlagene Korrektur kurz beschreiben.")
+    title = f"Datenkorrektur: {category}"
+    body = (
+        "## Art der Korrektur\n"
+        f"{category}\n\n"
+        "## Fundstelle\n"
+        f"{reference.strip() or 'Nicht angegeben'}\n\n"
+        "## Beschreibung\n"
+        f"{description.strip()}\n\n"
+        "---\n"
+        "Diese Meldung wurde über das Korrekturformular des Dashboards erstellt."
+    )
+    url = (
+        "https://github.com/stellamoR/bundestag_zwischenrufe/issues/new"
+        f"?title={quote(title)}&body={quote(body)}&labels=data-correction"
+    )
+    return (
+        "Die Angaben wurden noch nicht versendet. Bitte den vorausgefüllten Eintrag prüfen und "
+        f"anschließend **[Korrektur auf GitHub absenden]({url})**."
+    )
 
 
 def parse_date_range(start_value: str, end_value: str) -> tuple[pd.Timestamp, pd.Timestamp]:
@@ -774,7 +829,7 @@ CSS = f"""
 .control-panel {{flex: 0 0 350px !important; min-width: 350px !important; max-width: 350px !important; border: 1px solid #e4e7eb; border-radius: 14px; padding: 16px;}}
 .plot-panel {{flex: 1 1 auto !important; min-width: 680px !important;}}
 .plot-panel .plot-container {{min-height: 600px !important;}}
-.latest-plot .plot-container {{min-height: 350px !important;}}
+.latest-plot .plot-container {{min-height: 400px !important;}}
 .heatmap-plot {{max-width: {HEATMAP_WIDTH_PX}px !important; margin-left: 0 !important; margin-right: auto !important; overflow-x: auto !important;}}
 .heatmap-plot .plot-container {{min-height: 0 !important;}}
 .callout-list blockquote {{border-left: 4px solid #c9ced6; margin: 14px 0; padding: 10px 14px; background: #f7f8fa;}}
@@ -784,7 +839,7 @@ CSS = f"""
   .control-panel {{flex: 1 1 auto !important; min-width: 0 !important; max-width: none !important; width: 100% !important; box-sizing: border-box;}}
   .plot-panel {{min-width: 0 !important; width: 100% !important;}}
   .plot-panel .plot-container {{min-height: 420px !important;}}
-  .latest-plot .plot-container {{min-height: 350px !important;}}
+  .latest-plot .plot-container {{min-height: 400px !important;}}
   .heatmap-plot {{max-width: 100% !important; width: 100% !important;}}
   .heatmap-plot .plot-container {{min-width: {HEATMAP_WIDTH_PX}px !important; min-height: 0 !important;}}
   .title-row {{flex-wrap: nowrap !important;}}
@@ -796,7 +851,7 @@ CSS = f"""
   .gradio-container {{width: calc(100% - 16px) !important;}}
   .control-panel {{padding: 12px;}}
   .plot-panel .plot-container {{min-height: 360px !important;}}
-  .latest-plot .plot-container {{min-height: 320px !important;}}
+  .latest-plot .plot-container {{min-height: 350px !important;}}
   .info-panel {{padding: 14px 16px;}}
   .dashboard-title h1 {{font-size: 1.35rem !important; line-height: 1.2 !important;}}
 }}
@@ -876,7 +931,7 @@ def build_app() -> gr.Blocks:
                         period = gr.Dropdown(
                             PERIOD_CHOICES, value=DEFAULT_PERIOD, show_label=False)
                         custom_dates = gr.Checkbox(
-                            value=False, label="Benutzerdefiniertes Start- und Enddatum eingeben")
+                            value=False, label="Benutzerdefiniertes Start- und Enddatum")
                         start_date = gr.Textbox(value=str(DATA.min_date.date()), label="Startdatum",
                                                 info="JJJJ-MM-TT", visible=False)
                         end_date = gr.Textbox(value=str(DATA.max_date.date()), label="Enddatum",
@@ -925,6 +980,31 @@ def build_app() -> gr.Blocks:
                 latest_callouts = gr.Markdown(elem_classes="callout-list")
                 load_more_callouts = gr.Button("Mehr Zwischenrufe laden")
 
+        with gr.Accordion("Fehler melden oder Korrektur vorschlagen", open=False):
+            gr.Markdown(
+                "Bitte möglichst Datum, Person und – falls vorhanden – das Originalprotokoll "
+                "angeben. Die Meldung kann vor dem Absenden auf GitHub geprüft werden."
+            )
+            correction_category = gr.Dropdown(
+                choices=[
+                    "Falsche Person", "Falsche Partei", "Falscher Wortlaut",
+                    "Fehlender Zwischenruf", "Doppelter Eintrag", "Sonstiges",
+                ],
+                value="Falsche Person",
+                label="Art der Korrektur",
+            )
+            correction_reference = gr.Textbox(
+                label="Fundstelle",
+                placeholder="z. B. 14.06.2024, Name, BT-PlPr. 20/176 oder URL",
+            )
+            correction_description = gr.Textbox(
+                label="Beschreibung",
+                placeholder="Was ist falsch und wie sollte der Eintrag lauten?",
+                lines=4,
+            )
+            correction_submit = gr.Button("Korrektur vorbereiten", variant="primary")
+            correction_result = gr.Markdown()
+
         gr.Markdown(SOURCE_NOTICE, elem_classes="source-notice")
 
         year_inputs = [year_plot_type, start_year, end_year, year_normalize_seats]
@@ -940,6 +1020,11 @@ def build_app() -> gr.Blocks:
         close_info.click(
             lambda: (gr.update(visible=False), False),
             outputs=[info_panel, info_open],
+        )
+        correction_submit.click(
+            correction_issue_link,
+            inputs=[correction_category, correction_reference, correction_description],
+            outputs=correction_result,
         )
         refresh_latest.click(
             render_latest_board,
