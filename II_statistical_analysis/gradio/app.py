@@ -127,7 +127,7 @@ SENTENCES_BY_PARTY = "Redeanteil: Gesamtanzahl der gesprochenen Sätze nach Part
 INTERRUPTIONS_TOTAL = "Zwischenrufe: Gesamtanzahl der Zwischenrufe"
 INTERRUPTIONS_BY_PARTY = "Zwischenrufe: Anzahl der Zwischenrufe nach Partei"
 INTERRUPTIONS_STACKED = "Zwischenrufe: Zusammensetzung nach Partei (gestapelt)"
-INTERRUPTIONS_SHARE = "Zwischenrufe: Anteil der Parteien an allen Zwischenrufen (%)"
+INTERRUPTIONS_SHARE = "Zwischenrufe: Anteile der Parteien an allen Zwischenrufen (%)"
 YEAR_PLOT_CHOICES = [
     SENTENCES_TOTAL, SENTENCES_BY_PARTY,
     INTERRUPTIONS_TOTAL, INTERRUPTIONS_BY_PARTY,
