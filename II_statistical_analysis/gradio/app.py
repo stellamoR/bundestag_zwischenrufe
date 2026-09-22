@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import inspect
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,6 +32,10 @@ HEATMAP = "Heatmap: Wer unterbricht wen?"
 HEATMAP_GRID_PX = 470
 HEATMAP_MARGIN = {"l": 110, "r": 120, "t": 140, "b": 30}
 HEATMAP_WIDTH_PX = HEATMAP_MARGIN["l"] + HEATMAP_GRID_PX + HEATMAP_MARGIN["r"]
+
+# Gradio 5.50 warns that these options are moving to launch(), although its
+# launch() method does not accept them yet. Support both the 5.x and 6.x APIs.
+LAUNCH_ACCEPTS_PAGE_ASSETS = "css" in inspect.signature(gr.Blocks.launch).parameters
 
 
 @dataclass(frozen=True)
@@ -383,8 +389,23 @@ CSS = f"""
 
 
 def build_app() -> gr.Blocks:
-    with gr.Blocks(css=CSS, js=FORCE_LIGHT_MODE_JS, title="Bundestag · Reden und Zwischenrufe",
-                   fill_width=True) as dashboard:
+    blocks_kwargs = {
+        "title": "Bundestag · Reden und Zwischenrufe",
+        "fill_width": True,
+    }
+    if not LAUNCH_ACCEPTS_PAGE_ASSETS:
+        blocks_kwargs.update(css=CSS, js=FORCE_LIGHT_MODE_JS)
+
+    with warnings.catch_warnings():
+        if not LAUNCH_ACCEPTS_PAGE_ASSETS:
+            warnings.filterwarnings(
+                "ignore",
+                message="The '(css|js)' parameter in the Blocks constructor will be removed",
+                category=DeprecationWarning,
+            )
+        dashboard = gr.Blocks(**blocks_kwargs)
+
+    with dashboard:
         gr.Markdown("# Bundestag: Reden und Zwischenrufe", elem_classes="dashboard-title")
         gr.Markdown(
             f"Interaktive Auswertung der Plenarprotokolle von **{DATA.min_date.date():%d.%m.%Y}** "
@@ -481,4 +502,7 @@ def build_app() -> gr.Blocks:
 demo = build_app()
 
 if __name__ == "__main__":
-    demo.launch()
+    launch_kwargs = {}
+    if LAUNCH_ACCEPTS_PAGE_ASSETS:
+        launch_kwargs.update(css=CSS, js=FORCE_LIGHT_MODE_JS)
+    demo.launch(**launch_kwargs)

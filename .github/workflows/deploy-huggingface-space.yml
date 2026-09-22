@@ -1,0 +1,52 @@
+name: Deploy Hugging Face Space
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: huggingface-space-deployment
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Assemble Space files
+        shell: bash
+        run: |
+          mkdir -p .space-deploy/II_statistical_analysis/gradio
+          mkdir -p .space-deploy/_data
+          cp II_statistical_analysis/gradio/app.py .space-deploy/II_statistical_analysis/gradio/app.py
+          cp II_statistical_analysis/gradio/requirements.txt .space-deploy/requirements.txt
+          cp II_statistical_analysis/gradio/README.space.md .space-deploy/README.md
+          cp _data/speeches.csv .space-deploy/_data/speeches.csv
+          cp _data/interruptions.csv .space-deploy/_data/interruptions.csv
+          cp _data/bt_period_data.json .space-deploy/_data/bt_period_data.json
+
+      - name: Install Hugging Face uploader
+        run: python -m pip install --upgrade huggingface_hub hf_xet
+
+      - name: Upload Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: >-
+          hf upload stellamo/bundestag_stats .space-deploy .
+          --repo-type space
+          --delete "*"
+          --commit-message "Deploy from GitHub ${{ github.sha }}"
+
