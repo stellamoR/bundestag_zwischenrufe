@@ -42,11 +42,20 @@ INTERRUPTION_SUFFIX_PATTERN = re.compile(
     rf"(?P<post_colon>[ \t\u00a0\r\n]*)",
     flags=re.UNICODE,
 )
-INTERRUPTION_END_PATTERN = re.compile(r"[-–—\)]\s", flags=re.UNICODE)
+# Annotations are separated by a dash, which is not always followed by a space.
+ANNOTATION_KEYWORDS = r"Zurufe?|Gegenrufe?|Weitere[rs]?|Beifall|Lachen|Heiterkeit|Widerspruch|Zwischenruf"
+INTERRUPTION_END_PATTERN = re.compile(
+    rf"[-–—\)]\s|[-–—](?={ANNOTATION_KEYWORDS})|\Z", flags=re.UNICODE)
 CALLOUT_PATTERN = re.compile(
-    r"[-–—\s\(]Zuruf .*?" rf"{PARTY_PATTERN}:\s" r"([\s\S]*?)[-–—\)]\s",
+    # Scanned protocols break lines inside an annotation, so the gap may span
+    # newlines - but never a colon, dash or bracket, which separate annotations.
+    r"[-–—\s\(](?:Zurufe?|Gegenrufe?)[^:–—()\[\]]{0,70}?" rf"{PARTY_PATTERN}:\s"
+    rf"([\s\S]*?)(?:[-–—\)]\s|[-–—](?={ANNOTATION_KEYWORDS})|\Z)",
     flags=re.UNICODE,
 )
+# A callout can name several parties at once, e.g.
+# ``Zurufe von der SPD, der CDU/CSU, dem GRÜNE und der FDP: Oh!``.
+CALLOUT_PARTY_PATTERN = re.compile(PARTY_PATTERN, flags=re.UNICODE)
 # Some annotations identify a caller but do not transcribe anything said, for
 # example ``(Zuruf der Abg. Sonja Lemke [DIE LINKE])``.  Keep the complete
 # parenthetical here; names inside it are resolved against the period roster.
@@ -69,7 +78,12 @@ OFFICIAL_SPEAKER_PATTERN = re.compile(
     r"[\w ]{0,100}\n?[\w ]{0,100}?:",
     flags=re.UNICODE,
 )
-SPEECH_END_PATTERN = re.compile(r"(\nVizepräs.{0,99}?:)|(\nPräsid.{0,99}?:)|(\nAnlage)")
+SPEECH_END_PATTERN = re.compile(r"(\nAnlage)")
+# The chair's own turn used to be discarded together with everything up to the
+# next speaker, which dropped every interruption made while the chair spoke.
+# It is now a speech of its own whose speaker has no party (PRESIDENCY_PARTY).
+PRESIDENCY_HEADER_PATTERN = re.compile(r"\n(?P<name>(?:Vizepräs|Präsid)[^\n]{0,99}?):", flags=re.UNICODE)
+PRESIDENCY_PARTY = None
 
 
 def load_members(path: Path) -> list[tuple[str, str, str]]:
@@ -300,7 +314,7 @@ class SpeechHeader:
     start: int
     end: int
     name: str
-    party: str
+    party: str | None
 
 
 def protocol_period(path: Path) -> int | None:
@@ -362,11 +376,68 @@ def find_speech_headers(
         party = find_party_by_name(name, fallback_members)
         headers.append(SpeechHeader(field_start, match.end(), name, party))
 
+    for match in PRESIDENCY_HEADER_PATTERN.finditer(text):
+        headers.append(SpeechHeader(match.start("name"), match.end(),
+                                    normalize(match.group("name")), PRESIDENCY_PARTY))
+
     # Prefer roster-resolved party headers if two alternatives end together.
     unique: dict[tuple[int, int], SpeechHeader] = {}
     for header in sorted(headers, key=lambda item: (item.start, item.end)):
         unique[(header.start, header.end)] = header
     return sorted(unique.values(), key=lambda item: item.start)
+
+
+CLOSING_BRACKETS = {")": "(", "]": "["}
+# ``(X [SPD], an den Abg. Y [AfD]: ...)`` names the addressee, not the speaker.
+# The bracket right before the quote is then the wrong person, so the annotation
+# is skipped rather than attributed to whoever was addressed.
+ADDRESSEE_PATTERN = re.compile(r"an\s+(?:den|die)\s+Abg\.|\bgewandt\b", flags=re.UNICODE)
+
+
+# Where an annotation ends without its usual separator, the next one begins
+# inside the captured text: "... Opfer! Stefan Schmidt [GRÜNE]: Es geht ...".
+INNER_ANNOTATION_PATTERN = re.compile(rf"\[(?:{PARTY_PATTERN})\]\s*:", flags=re.UNICODE)
+INNER_OPENING_PATTERN = re.compile(
+    rf"\(\s*(?:{ANNOTATION_KEYWORDS})", flags=re.UNICODE)
+SENTENCE_BREAK_PATTERN = re.compile(r"[!?.;](?=\s)|[-–—](?=\s)", flags=re.UNICODE)
+
+
+def cut_at_next_annotation(value: str) -> str:
+    """Return only the part of `value` that precedes a foreign annotation."""
+    end = len(value)
+    opening = INNER_OPENING_PATTERN.search(value)
+    if opening:
+        end = opening.start()
+    inner = INNER_ANNOTATION_PATTERN.search(value, 0, end)
+    if inner:
+        breaks = [b.end() for b in SENTENCE_BREAK_PATTERN.finditer(value, 0, inner.start())]
+        # No sentence break before it means the whole capture belongs elsewhere.
+        end = breaks[-1] if breaks else 0
+    return value[:end].strip()
+
+
+def trim_comment_text(value: str) -> str:
+    """Cut the annotation's own brackets off the quote, keeping balanced ones."""
+    value = cut_at_next_annotation(value)
+    # Annotations are bracketed; a closing bracket that was never opened inside
+    # the quote ends it - even when no space follows ("... doch!)nicht im ...").
+    depth = {"]": 0, ")": 0}
+    opening = {"[": "]", "(": ")"}
+    for position, character in enumerate(value):
+        if character in opening:
+            depth[opening[character]] += 1
+        elif character in depth:
+            if depth[character] == 0:
+                value = value[:position]
+                break
+            depth[character] -= 1
+    value = value.strip()
+    while value and value[-1] in CLOSING_BRACKETS:
+        closing = value[-1]
+        if value.count(closing) <= value.count(CLOSING_BRACKETS[closing]):
+            break
+        value = value[:-1].strip()
+    return value
 
 
 def comments_from_text(text: str, resolver: MemberResolver) -> list[dict[str, Any]]:
@@ -377,28 +448,50 @@ def comments_from_text(text: str, resolver: MemberResolver) -> list[dict[str, An
         raw_field = searchable[field_start : match.start()]
         party = match.group("party")
         party = "CDU/CSU" if party in {"CDU", "CSU"} else party
+        if ADDRESSEE_PATTERN.search(raw_field[-90:]):
+            continue
         resolution = resolver.resolve(raw_field, party)
         if resolution is None:
             continue
         end_match = INTERRUPTION_END_PATTERN.search(searchable, match.end())
         if end_match is None:
             continue
+        raw_quote = searchable[match.end() : end_match.start()]
+        quote = trim_comment_text(raw_quote)
+        if not quote:
+            continue
         comments.append(
             {
                 "commentator": {"name": resolution.name, "party": party},
-                "text": searchable[match.end() : end_match.start()].strip(),
+                "text": quote,
+                # False when the annotation is unterminated in the source, so the
+                # quote may continue into the speaker's own words.
+                "quote_complete": bool(end_match.group(0)) or len(quote) < len(raw_quote.strip()),
                 "preceding_context": text[: field_start + resolution.start],
             }
         )
     normalized_text = re.sub("der LINKEN", "DIE LINKE", text)
     for match in CALLOUT_PATTERN.finditer(normalized_text):
-        comments.append(
-            {
-                "commentator": {"name": "<unknown>", "party": match.group(1)},
-                "text": match.group(2).strip(),
-                "preceding_context": text[: match.start()],
-            }
-        )
+        # Attribute the callout to every party it names, never to one of them.
+        announced = normalized_text[match.start() : match.end(1)]
+        parties = []
+        for party_match in CALLOUT_PARTY_PATTERN.finditer(announced):
+            party = party_match.group(0)
+            party = "CDU/CSU" if party in {"CDU", "CSU"} else party
+            if party not in parties:
+                parties.append(party)
+        raw_quote = match.group(2)
+        quote = trim_comment_text(raw_quote)
+        complete = match.end() < len(normalized_text) or len(quote) < len(raw_quote.strip())
+        for party in (parties or [match.group(1)]) if quote else []:
+            comments.append(
+                {
+                    "commentator": {"name": "<unknown>", "party": party},
+                    "text": quote,
+                    "quote_complete": complete,
+                    "preceding_context": text[: match.start()],
+                }
+            )
     for match in CALLER_ONLY_ZURUF_PATTERN.finditer(normalized_text):
         annotation = match.group(0)
         zuruf = re.search(r"\bZurufe?\b", annotation)
@@ -420,6 +513,7 @@ def comments_from_text(text: str, resolver: MemberResolver) -> list[dict[str, An
                 {
                     "commentator": {"name": resolution.name, "party": party},
                     "text": "",
+                    "quote_complete": True,
                     "preceding_context": text[: match.start()],
                 }
             )
@@ -477,7 +571,7 @@ def parse_protocol(
             "comments": comments_from_text(speech_text, resolver),
             "applause": applause_from_text(speech_text),
         }
-        if party not in PARTIES:
+        if party is not PRESIDENCY_PARTY and party not in PARTIES:
             missing_speakers.append((source.name, name, party))
             continue
 
@@ -558,23 +652,25 @@ def build_csv_files(
             speech_id = f"{protocol_id}:{speech_position:04d}"
             speaker = speech["speaker"]
             sentence_count = sum(1 for _ in nlp(speech["text"]).sents)
-            speech_rows.append(
-                [speaker["party"], speaker["name"], speech["applause"], sentence_count,
-                 date, protocol_id, speech_id]
-            )
+            if speaker["party"] is not None:
+                speech_rows.append(
+                    [speaker["party"], speaker["name"], speech["applause"], sentence_count,
+                     date, protocol_id, speech_id]
+                )
             for comment in speech.get("comments", []):
                 commentator = comment["commentator"]
                 comment_rows.append(
                     [
                         comment["text"], commentator["party"], commentator["name"],
                         speaker["party"], speaker["name"], date, sentence_count,
-                        protocol_id, speech_id,
+                        protocol_id, speech_id, comment.get("quote_complete", True),
                     ]
                 )
 
     interruption_columns = [
         "comment_text", "comment_party", "comment_name", "interrupted_speaker_party",
         "interrupted_speaker", "date", "speech_len_sents", "protocol_id", "speech_id",
+        "quote_complete",
     ]
     speech_columns = [
         "speaker_party", "speaker", "applause", "speech_len_sents", "date",

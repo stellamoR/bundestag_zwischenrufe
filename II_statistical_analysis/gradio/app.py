@@ -313,6 +313,9 @@ def rank_mixed_unique_callouts(frame: pd.DataFrame, limit: int) -> pd.DataFrame:
     candidates = frame.copy()
     candidates["comment_text"] = candidates["comment_text"].fillna("").astype(str).str.strip()
     candidates = candidates.loc[candidates["comment_text"].str.len().ge(4)].copy()
+    if "quote_complete" in candidates.columns:
+        # Skip quotes whose end is missing in the source protocol text.
+        candidates = candidates.loc[candidates["quote_complete"].fillna(True).astype(bool)].copy()
     candidates = candidates.loc[
         candidates["comment_name"].fillna("").astype(str).str.strip().ne("<unknown>")
     ].copy()
@@ -504,7 +507,9 @@ def callouts_markdown(callouts: pd.DataFrame) -> str:
         caller = html.escape(str(row["comment_name"]))
         party = html.escape(str(row["comment_party"]))
         interrupted = html.escape(str(row["interrupted_speaker"]))
-        interrupted_party = html.escape(str(row["interrupted_speaker_party"]))
+        # Interruptions during a chair turn have no interrupted party.
+        interrupted_party = (f" ({html.escape(str(row['interrupted_speaker_party']))})"
+                             if pd.notna(row["interrupted_speaker_party"]) else "")
         date = row["date"].date().strftime("%d.%m.%Y")
         if "protocol_id" in row and pd.notna(row["protocol_id"]):
             period, sitting = str(row["protocol_id"]).split("/", maxsplit=1)
@@ -519,7 +524,7 @@ def callouts_markdown(callouts: pd.DataFrame) -> str:
         entries.append(
             f"> **„{text}“**\n>\n"
             f"> {date} · **{caller} ({party})** während der Rede von "
-            f"**{interrupted} ({interrupted_party})** · "
+            f"**{interrupted}**{interrupted_party} · "
             f"[{source_label}]({source_url})"
         )
     return "\n\n".join(entries)
@@ -758,7 +763,7 @@ erfolgreich abgeschlossen hat.
 ### Aufbereitung und mögliche Fehler
 
 Reden, Zwischenrufe, Personen und Parteien werden maschinell aus den
-Protokolltexten extrahiert. Die Extraktion erfolgt durch Text-Matching und nicht durch XML-parsing, da die Protokolle erst seit der 19. BT-Periode mit dem \<kommentar\>-Feld veröffentlicht werden. Dies ermöglicht eine Auswertung von älteren Protokollen. Historische Schreibweisen, OCR-Fehler, uneindeutige
+Protokolltexten extrahiert. Die Extraktion erfolgt durch Text-Matching und nicht durch XML-parsing, da die Protokolle erst seit der 19. BT-Periode mit dem \<kommentar\>-Feld veröffentlicht werden. Dies ermöglicht eine Auswertung von älteren Protokollen. Historische Schreibweisen, Protokoll- oder OCR-Fehler, uneindeutige
 Namensnennungen und Änderungen der Protokollstruktur können zu Fehlzuordnungen
 oder fehlenden Treffern führen. Maßgeblich bleibt immer das amtliche
 Originalprotokoll.
