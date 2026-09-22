@@ -32,7 +32,7 @@ PARTY_COLORS = {
     "BSW": "#7d254f", "fraktionslos": "#7a7a7a",
 }
 PLOT_TEMPLATE = "plotly_white"
-HEATMAP = "Heatmap: Wer unterbricht wen?"
+HEATMAP = "Beziehungen zwischen Parteien"
 # Gradio forces Plotly to fill its container, so the heatmap's square shape is
 # fixed by these pixel sizes plus the matching max-width in CSS below.
 HEATMAP_GRID_PX = 470
@@ -53,23 +53,24 @@ class DashboardData:
     max_date: pd.Timestamp
 
 
-def seat_weights(interruptions: pd.DataFrame, periods: dict[str, dict]) -> pd.Series:
-    """Weight each interruption by 1 / seats of its party in the Bundestag sitting that day.
+def seat_weights(
+    frame: pd.DataFrame, periods: dict[str, dict], party_column: str,
+) -> pd.Series:
+    """Return 1 / party seats for each row on the date of that Bundestag sitting.
 
-    Summing these weights normalizes by seats even across several Bundestag
-    periods. Comments from parties without seats get NaN and are left out.
+    Parties without seats get NaN and are left out of normalized aggregates.
     """
     ordered = sorted(periods, key=lambda period: periods[period]["start_date"])
     starts = pd.to_datetime([periods[period]["start_date"] for period in ordered])
     # Each day belongs to the most recent period that had started by then.
-    positions = starts.searchsorted(interruptions["date"], side="right") - 1
+    positions = starts.searchsorted(frame["date"], side="right") - 1
     seats = pd.DataFrame(
         {period: pd.Series(periods[period]["num_seats"], dtype="float64") for period in ordered}
     ).replace(0, np.nan)
-    weights = pd.Series(np.nan, index=interruptions.index)
+    weights = pd.Series(np.nan, index=frame.index)
     for position, period in enumerate(ordered):
         in_period = positions == position
-        weights[in_period] = 1 / interruptions.loc[in_period, "comment_party"].map(seats[period])
+        weights[in_period] = 1 / frame.loc[in_period, party_column].map(seats[period])
     return weights
 
 
@@ -88,7 +89,9 @@ def load_data() -> DashboardData:
 
     with (DATA_DIR / "bt_period_data.json").open("r", encoding="utf-8") as input_file:
         periods = json.load(input_file)
-    interruptions["seat_weight"] = seat_weights(interruptions, periods)
+    interruptions["seat_weight"] = seat_weights(interruptions, periods, "comment_party")
+    speeches["seat_weight"] = seat_weights(speeches, periods, "speaker_party")
+    speeches["sentences_per_seat"] = speeches["speech_len_sents"] * speeches["seat_weight"]
     return DashboardData(
         speeches=speeches,
         interruptions=interruptions,
@@ -104,9 +107,9 @@ MAX_YEAR = int(DATA.max_date.year)
 PERIOD_CHOICES = [
     (f"{DATA.periods[period]['start_date'][:4]}–{DATA.periods[period]['end_date'][:4]} "
      f"({period}. Bundestag)", period)
-    for period in sorted(DATA.periods, key=int)
+    for period in sorted(DATA.periods, key=int, reverse=True)
 ]
-DEFAULT_PERIOD = PERIOD_CHOICES[-1][1]
+DEFAULT_PERIOD = PERIOD_CHOICES[0][1]
 
 
 def train_negative_sentiment_model() -> tuple[TfidfVectorizer, LogisticRegression]:
@@ -149,22 +152,47 @@ def finish_figure(figure: go.Figure, y_title: str | None = None) -> go.Figure:
     return figure
 
 
-SENTENCES_TOTAL = "Redeanteil: Gesamtanzahl der gesprochenen Sätze von allen Parteien"
-SENTENCES_BY_PARTY = "Redeanteil: Gesamtanzahl der gesprochenen Sätze nach Partei"
-INTERRUPTIONS_TOTAL = "Zwischenrufe: Gesamtanzahl der Zwischenrufe"
-INTERRUPTIONS_BY_PARTY = "Zwischenrufe: Anzahl der Zwischenrufe nach Partei"
-INTERRUPTIONS_STACKED = "Zwischenrufe: Zusammensetzung nach Partei (gestapelt)"
-INTERRUPTIONS_SHARE = "Zwischenrufe: Anteile der Parteien an allen Zwischenrufen (%)"
+SENTENCES_TOTAL = "Gesprochene Sätze insgesamt"
+SENTENCES_BY_PARTY = "Gesprochene Sätze nach Partei"
+INTERRUPTIONS_TOTAL = "Zwischenrufe insgesamt"
+INTERRUPTIONS_BY_PARTY = "Zwischenrufe nach Partei"
+INTERRUPTIONS_STACKED = "Zwischenrufe nach Partei, gestapelt"
+INTERRUPTIONS_SHARE = "Parteianteile an den Zwischenrufen"
 YEAR_PLOT_CHOICES = [
     SENTENCES_TOTAL, SENTENCES_BY_PARTY,
     INTERRUPTIONS_TOTAL, INTERRUPTIONS_BY_PARTY,
     INTERRUPTIONS_STACKED, INTERRUPTIONS_SHARE,
 ]
 SEAT_NORMALIZABLE_YEAR_PLOTS = {
+    SENTENCES_BY_PARTY,
     INTERRUPTIONS_BY_PARTY,
     INTERRUPTIONS_STACKED,
     INTERRUPTIONS_SHARE,
 }
+
+CUSTOM_YEAR_RANGE = "Benutzerdefiniert"
+ALL_YEAR_RANGE = "Gesamter Zeitraum"
+LAST_TEN_YEARS = "Letzte 10 Jahre"
+YEAR_RANGE_PRESETS = {
+    ALL_YEAR_RANGE: (MIN_YEAR, MAX_YEAR),
+    LAST_TEN_YEARS: (max(MIN_YEAR, MAX_YEAR - 9), MAX_YEAR),
+}
+for period in sorted(DATA.periods, key=int, reverse=True):
+    configured = DATA.periods[period]
+    start = max(MIN_YEAR, int(configured["start_date"][:4]))
+    end = min(MAX_YEAR, int(configured["end_date"][:4]))
+    if start <= end:
+        YEAR_RANGE_PRESETS[f"{period}. Bundestag ({start}–{end})"] = (start, end)
+
+
+def apply_year_preset(preset: str, start_year: int, end_year: int) -> tuple[int, int]:
+    if preset == CUSTOM_YEAR_RANGE:
+        return int(start_year), int(end_year)
+    return YEAR_RANGE_PRESETS.get(preset, (MIN_YEAR, MAX_YEAR))
+
+
+def mark_custom_year_range(_start: int, _end: int):
+    return gr.update(value=CUSTOM_YEAR_RANGE)
 
 
 def update_year_seat_toggle(plot_type: str):
@@ -205,15 +233,26 @@ def render_year_plot(
                          labels={"year": "Jahr", "speech_len_sents": "Sätze"})
         return finish_figure(figure, "Sätze")
     if plot_type == SENTENCES_BY_PARTY:
-        frame = (DATA.speeches.loc[DATA.speeches["year"].between(start_year, end_year)]
-                 .groupby(["year", "speaker_party"], as_index=False)["speech_len_sents"].sum())
-        figure = px.line(
-            frame, x="year", y="speech_len_sents", color="speaker_party", markers=True,
-            category_orders={"speaker_party": PARTIES}, color_discrete_map=PARTY_COLORS,
-            title="Gesprochene Sätze nach Partei und Jahr",
-            labels={"year": "Jahr", "speech_len_sents": "Sätze", "speaker_party": "Partei"},
+        value_column = "sentences_per_seat" if normalize_seats else "speech_len_sents"
+        frame = (
+            DATA.speeches.loc[DATA.speeches["year"].between(start_year, end_year)]
+            .groupby(["year", "speaker_party"], as_index=False)[value_column]
+            .sum(min_count=1)
         )
-        return finish_figure(figure, "Sätze")
+        unit = "Sätze je Sitz" if normalize_seats else "Sätze"
+        title = ("Gesprochene Sätze je Sitz nach Partei und Jahr"
+                 if normalize_seats else "Gesprochene Sätze nach Partei und Jahr")
+        figure = px.line(
+            frame, x="year", y=value_column, color="speaker_party", markers=True,
+            category_orders={"speaker_party": PARTIES}, color_discrete_map=PARTY_COLORS,
+            title=title,
+            labels={"year": "Jahr", value_column: unit, "speaker_party": "Partei"},
+        )
+        figure.update_traces(
+            hovertemplate=("%{y:,.1f} Sätze je Sitz" if normalize_seats
+                           else "%{y:,.0f} Sätze") + "<extra>%{fullData.name}</extra>"
+        )
+        return finish_figure(figure, unit)
     if plot_type == INTERRUPTIONS_TOTAL:
         frame = (DATA.interruptions.loc[DATA.interruptions["year"].between(start_year, end_year)]
                  .groupby("year").size().rename("interruptions").reset_index())
@@ -339,7 +378,7 @@ def latest_party_pie(frame: pd.DataFrame) -> go.Figure:
     )
     figure.update_layout(
         template=PLOT_TEMPLATE,
-        height=520,
+        height=350,
         legend_title_text="Partei der Zwischenrufenden",
         margin={"l": 25, "r": 25, "t": 75, "b": 25},
     )
@@ -347,8 +386,8 @@ def latest_party_pie(frame: pd.DataFrame) -> go.Figure:
 
 
 LATEST_PARTY_SHARE = "Parteianteile"
-LATEST_DAILY_STACK = "Zwischenrufe pro Tag"
-LATEST_VIEW_CHOICES = [LATEST_PARTY_SHARE, LATEST_DAILY_STACK]
+LATEST_DAILY_STACK = "Tagesverlauf"
+LATEST_VIEW_CHOICES = [LATEST_DAILY_STACK, LATEST_PARTY_SHARE]
 INITIAL_CALLOUT_COUNT = 8
 CALLOUT_PAGE_SIZE = 5
 
@@ -384,7 +423,7 @@ def latest_daily_stacked_bars(
     )
     figure.update_layout(
         template=PLOT_TEMPLATE,
-        height=520,
+        height=350,
         barmode="stack",
         hovermode="x unified",
         legend_title_text="Partei der Zwischenrufenden",
@@ -399,6 +438,29 @@ def latest_daily_stacked_bars(
         tickangle=0,
     )
     figure.update_yaxes(title="Zwischenrufe", rangemode="tozero")
+
+    # Mark a parliamentary summer recess when two consecutive protocol days
+    # leave a substantial gap that overlaps July or August.
+    protocol_dates = DATA.speeches["date"].drop_duplicates().sort_values().tolist()
+    for previous, following in zip(protocol_dates, protocol_dates[1:]):
+        gap_days = (following - previous).days - 1
+        gap_start = previous + pd.Timedelta(days=1)
+        gap_end = following - pd.Timedelta(days=1)
+        overlaps_window = gap_start <= end and gap_end >= start
+        summer_overlap = any(
+            month in {7, 8}
+            for month in pd.date_range(gap_start, gap_end).month
+        )
+        if gap_days >= 14 and overlaps_window and summer_overlap:
+            figure.add_vrect(
+                x0=max(gap_start, start),
+                x1=min(gap_end, end),
+                fillcolor="#8b95a5",
+                opacity=0.12,
+                line_width=0,
+                annotation_text="Sommerpause",
+                annotation_position="top",
+            )
     return figure
 
 
@@ -438,7 +500,7 @@ def render_latest_board(view: str, callout_count: int) -> tuple[str, go.Figure, 
         return "Keine Daten im jüngsten Zeitraum.", empty_figure("Keine Daten."), ""
     callouts = rank_negative_unique_callouts(frame, int(callout_count))
     summary = (
-        f"### Letzte 30 Tage des Bundestags\n"
+        f"### Bundestag Aktuell\n"
         f"Neuester verfügbarer Protokolltag: **{end:%d.%m.%Y}** · "
         f"Zeitraum: **{start:%d.%m.%Y}–{end:%d.%m.%Y}** · "
         f"**{len(frame):,}** Zwischenrufe"
@@ -620,6 +682,61 @@ SOURCE_NOTICE = (
     "[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de)."
 )
 
+INFO_CONTENT = f"""
+## Über dieses Dashboard
+
+Das Dashboard wertet **{len(DATA.speeches)} Reden** und
+**{len(DATA.interruptions)} Zwischenrufe** aus veröffentlichten
+Plenarprotokollen des Deutschen Bundestages aus. Der derzeitige Datenstand reicht
+vom **{DATA.min_date.date():%d.%m.%Y}** bis zum **{DATA.max_date.date():%d.%m.%Y}**.
+
+### Herkunft und Aktualisierung
+
+Grundlage sind die amtlichen Plenarprotokolle und Abgeordneten-Stammdaten aus dem
+[DIP](https://dip.bundestag.de) und dem
+[Open-Data-Angebot des Bundestages](https://www.bundestag.de/services/opendata).
+Ein automatischer Prozess sucht einmal täglich nach neuen oder korrigierten
+Protokollen. Das Dashboard ist deshalb nicht live: Eine Sitzung erscheint erst,
+nachdem der Bundestag ihr Protokoll veröffentlicht und die Verarbeitung
+erfolgreich abgeschlossen hat.
+
+### Aufbereitung und mögliche Fehler
+
+Reden, Zwischenrufe, Personen und Parteien werden maschinell aus den
+Protokolltexten extrahiert. Die Extraktion erfolgt durch Text-Matching und nicht durch XML-parsing, da die Protokolle erst seit der 19. BT-Periode mit dem \<kommentar\>-Feld veröffentlicht werden. Dies ermöglicht eine Auswertung von älteren Protokollen. Historische Schreibweisen, OCR-Fehler, uneindeutige
+Namensnennungen und Änderungen der Protokollstruktur können zu Fehlzuordnungen
+oder fehlenden Treffern führen. Maßgeblich bleibt immer das amtliche
+Originalprotokoll.
+
+### So sind die Kennzahlen zu lesen
+
+- **Je Sitz:** Jeder Zwischenruf wird mit `1 / Sitzzahl der zwischenrufenden
+  Partei` im zum Datum gehörenden Bundestag gewichtet.
+- **Je 1.000 Sätze:** Zwischenrufe werden durch die Zahl der gesprochenen Sätze
+  der unterbrochenen Partei geteilt und auf 1.000 Sätze hochgerechnet.
+- **Heatmap:** Die Zeile „Zwischenruf von …“ bezeichnet die unterbrechende
+  Partei; die Spalte „Rede von …“ bezeichnet die Partei der redenden Person.
+- **Letzte 30 Tage:** Der Zeitraum endet am neuesten verfügbaren Protokolltag,
+  nicht am heutigen Datum, und umfasst die 30 davorliegenden Kalendertage.
+
+### Interessante Zurufe
+
+Die Auswahl verwendet kein großes Sprachmodell. Ein klassisches
+TF-IDF-/Logistic-Regression-Modell wurde mit **4.500 manuell annotierten
+Zwischenrufen** trainiert und schätzt, ob ein Zuruf negativ ist. Ähnliche Texte
+im 30-Tage-Fenster werden zusätzlich per TF-IDF-Cosinus-Ähnlichkeit erkannt;
+ungewöhnlichere Formulierungen erhalten einen höheren Eigenständigkeitswert.
+Beide Werte sind automatische Schätzungen. Ironie, Zitate und fehlender Kontext
+können zu falschen Einstufungen führen.
+
+### Lizenz
+
+Die maschinell aufbereiteten Daten, Auswertungen und Visualisierungen dieses
+Projekts stehen unter [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de).
+Für die amtlichen Ausgangsdokumente gelten die Hinweise des Deutschen
+Bundestages.
+"""
+
 # Gradio follows the system's dark mode unless the URL asks for the light theme.
 FORCE_LIGHT_MODE_JS = """
 () => {
@@ -632,17 +749,57 @@ FORCE_LIGHT_MODE_JS = """
 """
 
 CSS = f"""
-.gradio-container {{width: calc(100% - 48px) !important; max-width: 1680px !important; min-width: 1080px; margin: 0 auto !important;}}
+.gradio-container {{width: calc(100% - 48px) !important; max-width: 1680px !important; min-width: 0 !important; margin: 0 auto !important;}}
+.title-row {{align-items: center !important;}}
 .dashboard-title {{margin-bottom: 0 !important;}}
 .dashboard-subtitle {{color: #5f6570; margin-top: 0 !important;}}
+.info-button {{
+  margin-left: auto !important;
+  max-width: 110px !important;
+  background: #ffffff !important;
+  color: #202124 !important;
+  border: 1px solid #c9ced6 !important;
+  box-shadow: none !important;
+}}
+.info-button:hover {{background: #f7f8fa !important; border-color: #9ca3ad !important;}}
+.info-panel {{border: 1px solid #d9dde3; border-radius: 14px; padding: 18px 22px; margin: 8px 0 18px !important; background: #f8f9fb;}}
 .source-notice {{color: #5f6570; font-size: 0.85em; margin-top: 12px !important;}}
+.control-section {{margin: 8px 0 -4px !important;}}
+.control-section h3 {{font-size: 0.9rem !important; letter-spacing: 0.02em; color: #5f6570;}}
+.year-input-row {{flex-wrap: nowrap !important;}}
+.year-input-row > * {{min-width: 0 !important;}}
+.tab-nav {{overflow-x: auto !important; flex-wrap: nowrap !important; scrollbar-width: thin;}}
+.tab-nav button {{flex: 0 0 auto !important; white-space: nowrap !important;}}
 .desktop-row {{display: flex !important; flex-wrap: nowrap !important; gap: 24px !important; align-items: flex-start !important;}}
 .control-panel {{flex: 0 0 350px !important; min-width: 350px !important; max-width: 350px !important; border: 1px solid #e4e7eb; border-radius: 14px; padding: 16px;}}
 .plot-panel {{flex: 1 1 auto !important; min-width: 680px !important;}}
 .plot-panel .plot-container {{min-height: 600px !important;}}
-.heatmap-plot {{max-width: {HEATMAP_WIDTH_PX}px !important; margin-left: 0 !important; margin-right: auto !important;}}
+.latest-plot .plot-container {{min-height: 350px !important;}}
+.heatmap-plot {{max-width: {HEATMAP_WIDTH_PX}px !important; margin-left: 0 !important; margin-right: auto !important; overflow-x: auto !important;}}
 .heatmap-plot .plot-container {{min-height: 0 !important;}}
 .callout-list blockquote {{border-left: 4px solid #c9ced6; margin: 14px 0; padding: 10px 14px; background: #f7f8fa;}}
+@media (max-width: 900px) {{
+  .gradio-container {{width: calc(100% - 24px) !important;}}
+  .desktop-row {{flex-direction: column !important; gap: 12px !important;}}
+  .control-panel {{flex: 1 1 auto !important; min-width: 0 !important; max-width: none !important; width: 100% !important; box-sizing: border-box;}}
+  .plot-panel {{min-width: 0 !important; width: 100% !important;}}
+  .plot-panel .plot-container {{min-height: 420px !important;}}
+  .latest-plot .plot-container {{min-height: 350px !important;}}
+  .heatmap-plot {{max-width: 100% !important; width: 100% !important;}}
+  .heatmap-plot .plot-container {{min-width: {HEATMAP_WIDTH_PX}px !important; min-height: 0 !important;}}
+  .title-row {{flex-wrap: nowrap !important;}}
+  .dashboard-title {{min-width: 0 !important;}}
+  .dashboard-title h1 {{font-size: 1.65rem !important;}}
+  .info-button {{flex: 0 0 auto !important;}}
+}}
+@media (max-width: 600px) {{
+  .gradio-container {{width: calc(100% - 16px) !important;}}
+  .control-panel {{padding: 12px;}}
+  .plot-panel .plot-container {{min-height: 360px !important;}}
+  .latest-plot .plot-container {{min-height: 320px !important;}}
+  .info-panel {{padding: 14px 16px;}}
+  .dashboard-title h1 {{font-size: 1.35rem !important; line-height: 1.2 !important;}}
+}}
 """
 
 
@@ -664,71 +821,101 @@ def build_app() -> gr.Blocks:
         dashboard = gr.Blocks(**blocks_kwargs)
 
     with dashboard:
-        gr.Markdown("# Bundestag: Reden und Zwischenrufe", elem_classes="dashboard-title")
+        info_open = gr.State(value=False)
+        with gr.Row(elem_classes="title-row"):
+            gr.Markdown("# Bundestag: Reden und Zwischenrufe", elem_classes="dashboard-title")
+            info_button = gr.Button("ⓘ Info", min_width=100, elem_classes="info-button")
         gr.Markdown(
             f"Interaktive Auswertung der Plenarprotokolle von **{DATA.min_date.date():%d.%m.%Y}** "
             f"bis **{DATA.max_date.date():%d.%m.%Y}**.", elem_classes="dashboard-subtitle",
         )
+        with gr.Group(visible=False, elem_classes="info-panel") as info_panel:
+            gr.Markdown(INFO_CONTENT)
+            close_info = gr.Button("Info schließen", min_width=130)
         with gr.Tabs():
-            with gr.Tab("Zeitverlauf"):
+            with gr.Tab("Entwicklung über Zeit"):
                 with gr.Row(elem_classes="desktop-row"):
                     with gr.Column(scale=1, elem_classes="control-panel"):
+                        gr.Markdown("### Darstellung", elem_classes="control-section")
                         year_plot_type = gr.Dropdown(
-                            YEAR_PLOT_CHOICES, value=INTERRUPTIONS_BY_PARTY, label="Darstellung")
-                        start_year = gr.Slider(MIN_YEAR, MAX_YEAR, value=MIN_YEAR, step=1, label="Von Jahr")
-                        end_year = gr.Slider(MIN_YEAR, MAX_YEAR, value=MAX_YEAR, step=1, label="Bis Jahr")
+                            YEAR_PLOT_CHOICES, value=INTERRUPTIONS_BY_PARTY,
+                            show_label=False,
+                        )
+                        gr.Markdown("### Zeitraum", elem_classes="control-section")
+                        year_range_preset = gr.Dropdown(
+                            choices=[CUSTOM_YEAR_RANGE, *YEAR_RANGE_PRESETS],
+                            value=ALL_YEAR_RANGE, show_label=False,
+                        )
+                        with gr.Row(elem_classes="year-input-row"):
+                            start_year = gr.Number(
+                                value=MIN_YEAR, label="Von", precision=0, step=1,
+                                minimum=MIN_YEAR, maximum=MAX_YEAR, min_width=0,
+                            )
+                            end_year = gr.Number(
+                                value=MAX_YEAR, label="Bis", precision=0, step=1,
+                                minimum=MIN_YEAR, maximum=MAX_YEAR, min_width=0,
+                            )
+                        gr.Markdown("### Normalisierung", elem_classes="control-section")
                         year_normalize_seats = gr.Checkbox(
                             value=False,
-                            label="Nach Sitzen der zwischenrufenden Partei normalisieren",
-                            info="Jeder Zwischenruf zählt 1 / Sitzzahl der Partei im jeweiligen Bundestag.",
+                            label="Nach Sitzen der jeweiligen Partei normalisieren",
+                            info="Gleicht unterschiedlich große Fraktionen aus.",
                         )
                         refresh_year = gr.Button("Diagramm aktualisieren", variant="primary")
                     with gr.Column(elem_classes="plot-panel"):
                         year_plot = gr.Plot(show_label=False)
-            with gr.Tab("Aggregierte Darstellungen von Zwischenrufen"):
+            with gr.Tab("Wer unterbricht wen?"):
                 with gr.Row(elem_classes="desktop-row"):
                     with gr.Column(scale=1, elem_classes="control-panel"):
+                        gr.Markdown("### Darstellung", elem_classes="control-section")
                         detail_plot_type = gr.Dropdown(
                             [HEATMAP, "Zwischenrufe nach Partei"],
-                            value=HEATMAP, label="Darstellung")
-                        period = gr.Dropdown(PERIOD_CHOICES, value=DEFAULT_PERIOD, label="Bundestagsperiode")
+                            value=HEATMAP, show_label=False)
+                        show_values = gr.Checkbox(value=False, label="Werte in der Heatmap anzeigen")
+                        gr.Markdown("### Zeitraum", elem_classes="control-section")
+                        period = gr.Dropdown(
+                            PERIOD_CHOICES, value=DEFAULT_PERIOD, show_label=False)
                         custom_dates = gr.Checkbox(
                             value=False, label="Benutzerdefiniertes Start- und Enddatum eingeben")
                         start_date = gr.Textbox(value=str(DATA.min_date.date()), label="Startdatum",
                                                 info="JJJJ-MM-TT", visible=False)
                         end_date = gr.Textbox(value=str(DATA.max_date.date()), label="Enddatum",
                                               info="JJJJ-MM-TT", visible=False)
-                        period_info = gr.Markdown(update_period_info(DEFAULT_PERIOD))
-                        normalize_seats = gr.Checkbox(value=False, label="Nach Sitzen der unterbrechenden Partei normalisieren")
-                        normalize_sentences = gr.Checkbox(value=False, label="Nach gesprochenen Sätzen der unterbrochenen Partei normalisieren")
+                        period_info = gr.Markdown(
+                            update_period_info(DEFAULT_PERIOD), visible=False)
+                        gr.Markdown("### Parteien", elem_classes="control-section")
                         selected_parties = gr.CheckboxGroup(
                             choices=PARTIES,
                             value=default_parties(DEFAULT_PERIOD),
-                            label="Parteien",
+                            show_label=False,
                             info="Standard: Parteien mit Sitzen; fraktionslos abgewählt",
                         )
-                        show_values = gr.Checkbox(value=False, label="Werte in der Heatmap anzeigen")
+                        gr.Markdown("### Normalisierung", elem_classes="control-section")
+                        normalize_seats = gr.Checkbox(value=False, label="Nach Sitzen der unterbrechenden Partei normalisieren")
+                        normalize_sentences = gr.Checkbox(value=False, label="Nach gesprochenen Sätzen der unterbrochenen Partei normalisieren")
                         refresh_detail = gr.Button("Diagramm aktualisieren", variant="primary")
                     with gr.Column(elem_classes="plot-panel"):
                         detail_summary = gr.Markdown()
                         detail_plot = gr.Plot(show_label=False, elem_classes=["heatmap-plot"])
-            with gr.Tab("Letzte 30 Tage des BT"):
+            with gr.Tab("Bundestag Aktuell"):
                 latest_callout_count = gr.State(value=INITIAL_CALLOUT_COUNT)
                 latest_summary = gr.Markdown()
                 with gr.Row(elem_classes="desktop-row"):
                     with gr.Column(scale=1, elem_classes="control-panel"):
+                        gr.Markdown("### Darstellung", elem_classes="control-section")
+                        latest_view = gr.Radio(
+                            choices=LATEST_VIEW_CHOICES,
+                            value=LATEST_DAILY_STACK,
+                            show_label=False,
+                        )
+                        gr.Markdown("### Zeitraum", elem_classes="control-section")
                         gr.Markdown(
                             "Die Auswahl endet am neuesten verfügbaren Protokolltag und umfasst "
                             "die 30 vorhergehenden Kalendertage."
                         )
-                        latest_view = gr.Radio(
-                            choices=LATEST_VIEW_CHOICES,
-                            value=LATEST_PARTY_SHARE,
-                            label="Darstellung",
-                        )
                         refresh_latest = gr.Button("Ansicht aktualisieren", variant="primary")
                     with gr.Column(scale=2, elem_classes="plot-panel"):
-                        latest_plot = gr.Plot(show_label=False)
+                        latest_plot = gr.Plot(show_label=False, elem_classes="latest-plot")
                 gr.Markdown("## Interessante Zurufe")
                 gr.Markdown(
                     "Die Auswahl der Zwischenrufe erfolgt automatisiert "
@@ -745,6 +932,15 @@ def build_app() -> gr.Blocks:
                          normalize_seats, normalize_sentences, selected_parties, show_values]
         latest_inputs = [latest_view, latest_callout_count]
         latest_outputs = [latest_summary, latest_plot, latest_callouts]
+        info_button.click(
+            lambda is_open: (gr.update(visible=not is_open), not is_open),
+            inputs=info_open,
+            outputs=[info_panel, info_open],
+        )
+        close_info.click(
+            lambda: (gr.update(visible=False), False),
+            outputs=[info_panel, info_open],
+        )
         refresh_latest.click(
             render_latest_board,
             inputs=latest_inputs,
@@ -775,8 +971,25 @@ def build_app() -> gr.Blocks:
             inputs=year_inputs,
             outputs=year_plot,
         )
-        start_year.release(render_year_plot, inputs=year_inputs, outputs=year_plot)
-        end_year.release(render_year_plot, inputs=year_inputs, outputs=year_plot)
+        year_range_preset.change(
+            apply_year_preset,
+            inputs=[year_range_preset, start_year, end_year],
+            outputs=[start_year, end_year],
+        ).then(
+            render_year_plot,
+            inputs=year_inputs,
+            outputs=year_plot,
+        )
+        for year_input in [start_year, end_year]:
+            year_input.change(
+                mark_custom_year_range,
+                inputs=[start_year, end_year],
+                outputs=year_range_preset,
+            ).then(
+                render_year_plot,
+                inputs=year_inputs,
+                outputs=year_plot,
+            )
         year_normalize_seats.change(render_year_plot, inputs=year_inputs, outputs=year_plot)
 
         for control in [detail_plot_type, custom_dates]:
