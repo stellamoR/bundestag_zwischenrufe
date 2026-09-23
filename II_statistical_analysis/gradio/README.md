@@ -13,7 +13,7 @@ From the repository root in PowerShell:
 
 Then open <http://127.0.0.1:7860>.
 
-The app reads `_data/speeches.csv`, `_data/interruptions.csv`, and
+The app reads `_data/speeches.parquet`, `_data/interruptions.parquet`, and
 `_data/bt_period_data.json`. Paths are resolved relative to the repository, so
 the launch command also works from another current directory.
 

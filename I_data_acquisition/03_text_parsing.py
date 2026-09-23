@@ -629,12 +629,12 @@ def clean_whitespace(value: str) -> str:
     return " ".join(value.split()).strip()
 
 
-def build_csv_files(
+def build_parquet_files(
     parsed_dir: Path,
     interruptions_path: Path,
     speeches_path: Path,
 ) -> tuple[int, int]:
-    """Flatten parsed protocol files into the two analysis CSV datasets."""
+    """Flatten parsed protocol files into the two analysis Parquet datasets."""
     import pandas as pd
     from spacy.lang.de import German
 
@@ -642,7 +642,7 @@ def build_csv_files(
     nlp.add_pipe("sentencizer")
     comment_rows: list[list[Any]] = []
     speech_rows: list[list[Any]] = []
-    for protocol_path in tqdm(sorted(parsed_dir.glob("*.json")), desc="Building CSVs"):
+    for protocol_path in tqdm(sorted(parsed_dir.glob("*.json")), desc="Building Parquet files"):
         with protocol_path.open("r", encoding="utf-8") as input_file:
             protocol = json.load(input_file)
         date = protocol_path.stem[7:]
@@ -691,8 +691,8 @@ def build_csv_files(
 
     interruptions_path.parent.mkdir(parents=True, exist_ok=True)
     speeches_path.parent.mkdir(parents=True, exist_ok=True)
-    interruptions.to_csv(interruptions_path)
-    speeches.to_csv(speeches_path)
+    interruptions.to_parquet(interruptions_path, index=False)
+    speeches.to_parquet(speeches_path, index=False)
     print(f"Wrote {len(interruptions)} interruptions to {interruptions_path}")
     print(f"Wrote {len(speeches)} speeches to {speeches_path}")
     return len(interruptions), len(speeches)
@@ -708,9 +708,12 @@ def parse_args() -> argparse.Namespace:
         "--start-from",
         help="Start parsing inclusively at this protocol stem or filename",
     )
-    parser.add_argument("--interruptions", type=Path, default=DATA_DIR / "interruptions.csv")
-    parser.add_argument("--speeches", type=Path, default=DATA_DIR / "speeches.csv")
-    parser.add_argument("--skip-parsing", action="store_true", help="Only rebuild CSVs from parsed JSON")
+    parser.add_argument("--interruptions", type=Path, default=DATA_DIR / "interruptions.parquet")
+    parser.add_argument("--speeches", type=Path, default=DATA_DIR / "speeches.parquet")
+    parser.add_argument(
+        "--skip-parsing", action="store_true",
+        help="Only rebuild Parquet files from parsed JSON",
+    )
     return parser.parse_args()
 
 
@@ -724,4 +727,4 @@ if __name__ == "__main__":
             arguments.members_xml,
             arguments.start_from,
         )
-    build_csv_files(arguments.parsed_dir, arguments.interruptions, arguments.speeches)
+    build_parquet_files(arguments.parsed_dir, arguments.interruptions, arguments.speeches)

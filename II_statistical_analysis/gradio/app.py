@@ -24,7 +24,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 APP_DIR = Path(__file__).resolve().parent
 REPO_ROOT = APP_DIR.parents[1]
 DATA_DIR = REPO_ROOT / "_data"
-LABELED_INTERRUPTION_PATH = DATA_DIR / "interruptions_labeled.csv"
+LABELED_INTERRUPTION_PATH = DATA_DIR / "interruptions_labeled.parquet"
 
 PARTIES = ["CDU/CSU", "SPD", "GRÜNE", "FDP", "AfD", "DIE LINKE", "BSW", "fraktionslos"]
 PARTY_COLORS = {
@@ -81,10 +81,8 @@ def seat_weights(
 
 def load_data() -> DashboardData:
     """Load generated files independently of the current working directory."""
-    speeches = pd.read_csv(DATA_DIR / "speeches.csv", encoding="utf-8")
-    interruptions = pd.read_csv(DATA_DIR / "interruptions.csv", encoding="utf-8")
-    speeches = speeches.drop(columns=["Unnamed: 0"], errors="ignore")
-    interruptions = interruptions.drop(columns=["Unnamed: 0"], errors="ignore")
+    speeches = pd.read_parquet(DATA_DIR / "speeches.parquet")
+    interruptions = pd.read_parquet(DATA_DIR / "interruptions.parquet")
     speeches["date"] = pd.to_datetime(speeches["date"], errors="coerce")
     interruptions["date"] = pd.to_datetime(interruptions["date"], errors="coerce")
     speeches = speeches.dropna(subset=["date"])
@@ -119,7 +117,7 @@ DEFAULT_PERIOD = PERIOD_CHOICES[0][1]
 
 def train_negative_sentiment_model() -> tuple[TfidfVectorizer, LogisticRegression]:
     """Train a small CPU-only classifier from the project's manual labels."""
-    labeled = pd.read_csv(LABELED_INTERRUPTION_PATH, encoding="utf-8")
+    labeled = pd.read_parquet(LABELED_INTERRUPTION_PATH)
     labeled = labeled.dropna(subset=["comment_text", "sentiment"])
     texts = labeled["comment_text"].astype(str)
     negative = labeled["sentiment"].astype(int).eq(1).astype(int)

@@ -39,13 +39,13 @@ jobs:
         id: data
         shell: bash
         run: |
-          if git diff --quiet -- _data/speeches.csv _data/interruptions.csv; then
+          if git diff --quiet -- _data/speeches.parquet _data/interruptions.parquet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add _data/speeches.csv _data/interruptions.csv
+          git add _data/speeches.parquet _data/interruptions.parquet
           git commit -m "Update Bundestag protocols"
           git push origin HEAD:main
           echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -59,9 +59,9 @@ jobs:
           cp II_statistical_analysis/gradio/app.py .space-deploy/II_statistical_analysis/gradio/app.py
           cp II_statistical_analysis/gradio/requirements.txt .space-deploy/requirements.txt
           cp II_statistical_analysis/gradio/README.space.md .space-deploy/README.md
-          cp _data/speeches.csv .space-deploy/_data/speeches.csv
-          cp _data/interruptions.csv .space-deploy/_data/interruptions.csv
-          cp _data/interruptions_labeled.csv .space-deploy/_data/interruptions_labeled.csv
+          cp _data/speeches.parquet .space-deploy/_data/speeches.parquet
+          cp _data/interruptions.parquet .space-deploy/_data/interruptions.parquet
+          cp _data/interruptions_labeled.parquet .space-deploy/_data/interruptions_labeled.parquet
           cp _data/bt_period_data.json .space-deploy/_data/bt_period_data.json
 
       - name: Deploy refreshed data to Hugging Face

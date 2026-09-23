@@ -1,4 +1,4 @@
-"""Incrementally refresh dashboard CSVs from recently published DIP protocols."""
+"""Incrementally refresh dashboard Parquet files from recent DIP protocols."""
 
 from __future__ import annotations
 
@@ -28,9 +28,9 @@ def load_script(name: str, filename: str) -> ModuleType:
     return module
 
 
-def atomic_csv(frame: pd.DataFrame, destination: Path) -> None:
+def atomic_parquet(frame: pd.DataFrame, destination: Path) -> None:
     temporary = destination.with_suffix(destination.suffix + ".tmp")
-    frame.to_csv(temporary, index=False)
+    frame.to_parquet(temporary, index=False)
     temporary.replace(destination)
 
 
@@ -60,14 +60,10 @@ def update_recent_protocols(overlap_days: int = 14, end_date: date | None = None
     downloader = load_script("protocol_downloader", "01_get_protocol_data.py")
     parser = load_script("protocol_parser", "03_text_parsing.py")
 
-    speeches_path = DATA_DIR / "speeches.csv"
-    interruptions_path = DATA_DIR / "interruptions.csv"
-    existing_speeches = pd.read_csv(speeches_path, encoding="utf-8").drop(
-        columns=["Unnamed: 0"], errors="ignore"
-    )
-    existing_interruptions = pd.read_csv(interruptions_path, encoding="utf-8").drop(
-        columns=["Unnamed: 0"], errors="ignore"
-    )
+    speeches_path = DATA_DIR / "speeches.parquet"
+    interruptions_path = DATA_DIR / "interruptions.parquet"
+    existing_speeches = pd.read_parquet(speeches_path)
+    existing_interruptions = pd.read_parquet(interruptions_path)
     latest = max(
         pd.to_datetime(existing_speeches["date"]).max(),
         pd.to_datetime(existing_interruptions["date"]).max(),
@@ -79,8 +75,8 @@ def update_recent_protocols(overlap_days: int = 14, end_date: date | None = None
         work = Path(temporary)
         protocols = work / "protocols"
         parsed = work / "parsed"
-        fresh_speeches_path = work / "speeches.csv"
-        fresh_interruptions_path = work / "interruptions.csv"
+        fresh_speeches_path = work / "speeches.parquet"
+        fresh_interruptions_path = work / "interruptions.parquet"
 
         downloaded = downloader.download_protocols(
             start.isoformat(), end.isoformat(), output_dir=protocols
@@ -100,14 +96,10 @@ def update_recent_protocols(overlap_days: int = 14, end_date: date | None = None
         )
         if missing:
             print(f"Warning: {len(missing)} speech headers had no supported party mapping.")
-        parser.build_csv_files(parsed, fresh_interruptions_path, fresh_speeches_path)
+        parser.build_parquet_files(parsed, fresh_interruptions_path, fresh_speeches_path)
 
-        fresh_speeches = pd.read_csv(fresh_speeches_path, encoding="utf-8").drop(
-            columns=["Unnamed: 0"], errors="ignore"
-        )
-        fresh_interruptions = pd.read_csv(fresh_interruptions_path, encoding="utf-8").drop(
-            columns=["Unnamed: 0"], errors="ignore"
-        )
+        fresh_speeches = pd.read_parquet(fresh_speeches_path)
+        fresh_interruptions = pd.read_parquet(fresh_interruptions_path)
         if fresh_speeches.empty:
             raise RuntimeError("Protocols were downloaded but no speeches were parsed; refusing to publish.")
         if fresh_speeches["speech_id"].duplicated().any():
@@ -137,8 +129,8 @@ def update_recent_protocols(overlap_days: int = 14, end_date: date | None = None
         if len(interruptions) < len(existing_interruptions) * 0.99:
             raise RuntimeError("Interruption count dropped unexpectedly; refusing to publish.")
 
-        atomic_csv(speeches, speeches_path)
-        atomic_csv(interruptions, interruptions_path)
+        atomic_parquet(speeches, speeches_path)
+        atomic_parquet(interruptions, interruptions_path)
         print(
             f"Updated {downloaded} protocols. Dashboard now contains "
             f"{len(speeches)} speeches and {len(interruptions)} interruptions."
