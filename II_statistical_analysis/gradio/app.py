@@ -1054,12 +1054,13 @@ def build_app() -> gr.Blocks:
                         gr.Markdown("### Darstellung", elem_classes="control-section")
                         year_plot_type = gr.Dropdown(
                             YEAR_PLOT_CHOICES, value=INTERRUPTIONS_BY_PARTY,
-                            show_label=False,
+                            show_label=False, allow_custom_value=False, filterable=False,
                         )
                         gr.Markdown("### Zeitraum", elem_classes="control-section")
                         year_range_preset = gr.Dropdown(
                             choices=[CUSTOM_YEAR_RANGE, *YEAR_RANGE_PRESETS],
                             value=ALL_YEAR_RANGE, show_label=False,
+                            allow_custom_value=False, filterable=False,
                         )
                         with gr.Row(elem_classes="year-input-row"):
                             start_year = gr.Number(
@@ -1085,11 +1086,13 @@ def build_app() -> gr.Blocks:
                         gr.Markdown("### Darstellung", elem_classes="control-section")
                         detail_plot_type = gr.Dropdown(
                             [HEATMAP, "Zwischenrufe nach Partei"],
-                            value=HEATMAP, show_label=False)
+                            value=HEATMAP, show_label=False,
+                            allow_custom_value=False, filterable=False)
                         show_values = gr.Checkbox(value=False, label="Werte in der Heatmap anzeigen")
                         gr.Markdown("### Zeitraum", elem_classes="control-section")
                         period = gr.Dropdown(
-                            PERIOD_CHOICES, value=DEFAULT_PERIOD, show_label=False)
+                            PERIOD_CHOICES, value=DEFAULT_PERIOD, show_label=False,
+                            allow_custom_value=False, filterable=False)
                         custom_dates = gr.Checkbox(
                             value=False, label="Benutzerdefiniertes Start- und Enddatum")
                         start_date = gr.Textbox(value=str(DATA.min_date.date()), label="Startdatum",
@@ -1155,6 +1158,8 @@ def build_app() -> gr.Blocks:
                 ],
                 value="Falsche Person",
                 label="Art der Korrektur",
+                allow_custom_value=False,
+                filterable=False,
             )
             correction_reference = gr.Textbox(
                 label="Fundstelle",
