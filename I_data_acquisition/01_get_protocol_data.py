@@ -33,6 +33,7 @@ def download_protocols(
     }
 
     document_count = 0
+    skipped_without_text = 0
     with requests.Session() as session:
         while True:
             response = session.get(API_URL, params=params, timeout=60)
@@ -40,21 +41,35 @@ def download_protocols(
             payload = response.json()
 
             documents = payload.get("documents", [])
-            document_count += len(documents)
             for document in documents:
+                text = document.get("text")
+                if not isinstance(text, str) or not text.strip():
+                    skipped_without_text += 1
+                    print(
+                        "Skipping protocol "
+                        f"{document.get('dokumentnummer', document.get('id', '<unknown>'))}: "
+                        "DIP has not published its full text yet."
+                    )
+                    continue
                 period = str(document["wahlperiode"]).zfill(2)
                 number = document["dokumentnummer"].split("/")[-1].zfill(3)
                 destination = output_dir / f'{period}_{number}_{document["datum"]}.json'
                 with destination.open("w", encoding="utf-8") as json_file:
                     json.dump(document, json_file, ensure_ascii=False, indent=4)
                 print(destination)
+                document_count += 1
 
             cursor = payload.get("cursor")
             if cursor is None or cursor == params.get("cursor"):
                 break
             params["cursor"] = cursor
 
-    print(f"Retrieved all {document_count} documents")
+    print(f"Retrieved {document_count} protocols with full text")
+    if skipped_without_text:
+        print(
+            f"Skipped {skipped_without_text} protocol(s) without full text; "
+            "a later update will retry them."
+        )
     return document_count
 
 

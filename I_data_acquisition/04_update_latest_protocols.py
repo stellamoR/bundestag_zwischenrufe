@@ -86,7 +86,10 @@ def update_recent_protocols(overlap_days: int = 14, end_date: date | None = None
             start.isoformat(), end.isoformat(), output_dir=protocols
         )
         if downloaded == 0:
-            print(f"No protocols returned for {start} through {end}; nothing to update.")
+            print(
+                f"No protocols with published full text available for {start} through {end}; "
+                "nothing to update."
+            )
             return 0
 
         missing = parser.parse_all_protocols(
