@@ -376,7 +376,16 @@ def render_year_plot(
                       if normalize_seats else "Anteil der Zwischenrufe (%)")
         figure = finish_party_year_figure(
             figure, share_unit, start_year, end_year)
-        figure.update_yaxes(range=[0, 100], ticksuffix=" %")
+        # Only the main percentage axis uses 0–100. Applying this through
+        # update_yaxes() would also squash the coalition strip's 0–1 axis.
+        figure.update_layout(
+            yaxis={"range": [0, 100], "ticksuffix": " %"},
+            hovermode="x unified",
+        )
+        figure.update_xaxes(
+            showspikes=True, spikemode="across", spikesnap="cursor",
+            spikedash="dot", spikecolor="#5f6570", spikethickness=1,
+        )
         return figure
 
     title = ("Zwischenrufe je Sitz nach Partei und Jahr"
