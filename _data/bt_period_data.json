@@ -2,6 +2,9 @@
     "12": {
         "start_date": "1991-03-12",
         "end_date": "1994-09-21",
+        "coalitions": [
+            {"start_date": "1991-01-18", "end_date": "1994-11-17", "parties": ["CDU/CSU", "FDP"]}
+        ],
         "num_seats": {
             "CDU/CSU": 317,
             "SPD": 239,
@@ -16,6 +19,9 @@
     "13": {
         "start_date": "1994-11-10",
         "end_date": "1998-10-16",
+        "coalitions": [
+            {"start_date": "1994-11-17", "end_date": "1998-10-27", "parties": ["CDU/CSU", "FDP"]}
+        ],
         "num_seats": {
             "CDU/CSU": 295,
             "SPD": 251,
@@ -30,6 +36,9 @@
     "14": {
         "start_date": "1998-10-26",
         "end_date": "2002-09-13",
+        "coalitions": [
+            {"start_date": "1998-10-27", "end_date": "2002-10-22", "parties": ["SPD", "GRÜNE"]}
+        ],
         "num_seats": {
             "CDU/CSU": 245,
             "SPD": 293,
@@ -44,6 +53,9 @@
     "15": {
         "start_date": "2002-10-17",
         "end_date": "2005-09-28",
+        "coalitions": [
+            {"start_date": "2002-10-22", "end_date": "2005-11-22", "parties": ["SPD", "GRÜNE"]}
+        ],
         "num_seats": {
             "CDU/CSU": 247,
             "SPD": 249,
@@ -58,6 +70,9 @@
     "16": {
         "start_date": "2005-10-18",
         "end_date": "2009-09-08",
+        "coalitions": [
+            {"start_date": "2005-11-22", "end_date": "2009-10-28", "parties": ["CDU/CSU", "SPD"]}
+        ],
         "num_seats": {
             "CDU/CSU": 222,
             "SPD": 221,
@@ -72,6 +87,9 @@
     "17": {
         "start_date": "2009-10-27",
         "end_date": "2013-09-03",
+        "coalitions": [
+            {"start_date": "2009-10-28", "end_date": "2013-12-17", "parties": ["CDU/CSU", "FDP"]}
+        ],
         "num_seats": {
             "CDU/CSU": 237,
             "SPD": 146,
@@ -86,6 +104,9 @@
     "18": {
         "start_date": "2013-10-22",
         "end_date": "2017-09-05",
+        "coalitions": [
+            {"start_date": "2013-12-17", "end_date": "2018-03-14", "parties": ["CDU/CSU", "SPD"]}
+        ],
         "num_seats": {
             "CDU/CSU": 309,
             "SPD": 193,
@@ -100,6 +121,9 @@
     "19": {
         "start_date": "2017-10-24",
         "end_date": "2021-09-07",
+        "coalitions": [
+            {"start_date": "2018-03-14", "end_date": "2021-12-08", "parties": ["CDU/CSU", "SPD"]}
+        ],
         "num_seats": {
             "CDU/CSU": 245,
             "SPD": 152,
@@ -114,6 +138,10 @@
     "20": {
         "start_date": "2021-10-26",
         "end_date": "2025-03-24",
+        "coalitions": [
+            {"start_date": "2021-12-08", "end_date": "2024-11-07", "parties": ["SPD", "FDP", "GRÜNE"]},
+            {"start_date": "2024-11-07", "end_date": "2025-05-06", "parties": ["SPD", "GRÜNE"]}
+        ],
         "num_seats": {
             "CDU/CSU": 196,
             "SPD": 207,
@@ -128,6 +156,9 @@
     "21": {
         "start_date": "2025-03-25",
         "end_date": "2029-09-01",
+        "coalitions": [
+            {"start_date": "2025-05-06", "end_date": "2029-09-01", "parties": ["CDU/CSU", "SPD"]}
+        ],
         "num_seats": {
             "CDU/CSU": 208,
             "SPD": 120,

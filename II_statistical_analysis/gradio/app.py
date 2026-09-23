@@ -32,6 +32,10 @@ PARTY_COLORS = {
     "FDP": "#ffed00", "AfD": "#009ee0", "DIE LINKE": "#be3075",
     "BSW": "#7d254f", "fraktionslos": "#7a7a7a",
 }
+COALITION_PARTY_ORDER = [
+    "CDU/CSU", "SPD", "FDP", "GRÜNE", "DIE LINKE", "AfD", "BSW",
+    "fraktionslos",
+]
 PLOT_TEMPLATE = "plotly_white"
 HEATMAP = "Beziehungen zwischen Parteien"
 # Gradio forces Plotly to fill its container, so the heatmap's square shape is
@@ -153,6 +157,87 @@ def finish_figure(figure: go.Figure, y_title: str | None = None) -> go.Figure:
     return figure
 
 
+def fractional_year(value: str) -> float:
+    date = pd.Timestamp(value)
+    return date.year + (date.dayofyear - 1) / (366 if date.is_leap_year else 365)
+
+
+def add_coalition_band(
+    figure: go.Figure, start_year: int, end_year: int,
+) -> go.Figure:
+    """Add a hoverable, fixed-height coalition strip below a numeric year axis."""
+    visible_start = start_year - 0.25
+    visible_end = end_year + 0.25
+    coalition_phases = []
+    for period in DATA.periods.values():
+        for coalition in period.get("coalitions", []):
+            left = max(fractional_year(coalition["start_date"]), visible_start)
+            right = min(fractional_year(coalition["end_date"]), visible_end)
+            parties = sorted(
+                coalition.get("parties", []),
+                key=lambda party: COALITION_PARTY_ORDER.index(party),
+            )
+            if right <= left or not parties:
+                continue
+            coalition_phases.append((left, right, coalition, parties))
+            party_height = 1 / len(parties)
+            hover = (
+                "<b>Koalition</b><br>"
+                + " · ".join(parties)
+                + f"<br>{pd.Timestamp(coalition['start_date']):%d.%m.%Y}–"
+                + f"{pd.Timestamp(coalition['end_date']):%d.%m.%Y}"
+            )
+            for index, party in enumerate(parties):
+                figure.add_trace(go.Bar(
+                    x=[(left + right) / 2], y=[party_height],
+                    width=[right - left], base=[1 - (index + 1) * party_height],
+                    yaxis="y2", marker={
+                        "color": PARTY_COLORS.get(party, "#7a7a7a"),
+                        "line": {"width": 0},
+                    },
+                    opacity=0.9, showlegend=False,
+                    customdata=[[hover]],
+                    hovertemplate="%{customdata[0]}<extra></extra>",
+                ))
+
+    # Coalition changes get a vertical separator; parties within one coalition
+    # deliberately have no horizontal white separators.
+    boundaries = sorted({right for _left, right, _coalition, _parties in coalition_phases})
+    for boundary in boundaries[:-1]:
+        if visible_start < boundary < visible_end:
+            figure.add_shape(
+                type="line", xref="x", yref="paper", x0=boundary, x1=boundary,
+                y0=0, y1=0.055, line={"color": "white", "width": 1.2},
+            )
+    figure.add_annotation(
+        xref="paper", yref="paper", x=0, y=0.0275,
+        text="KOALITION", showarrow=False, xanchor="right", yanchor="middle",
+        xshift=-8, font={"size": 9, "color": "#6b7280"},
+    )
+    figure.update_layout(
+        margin={"l": 75, "r": 25, "t": 75, "b": 55},
+        yaxis={"domain": [0.16, 1]},
+        yaxis2={
+            "domain": [0, 0.055], "range": [0, 1], "fixedrange": True,
+            "visible": False, "anchor": "x",
+        },
+        barmode="overlay",
+        hovermode="closest",
+    )
+    figure.update_xaxes(
+        range=[visible_start, visible_end], title_standoff=10, automargin=True,
+    )
+    return figure
+
+
+def finish_party_year_figure(
+    figure: go.Figure, y_title: str, start_year: int, end_year: int,
+) -> go.Figure:
+    return add_coalition_band(
+        finish_figure(figure, y_title), start_year, end_year,
+    )
+
+
 SENTENCES_TOTAL = "Gesprochene Sätze insgesamt"
 SENTENCES_BY_PARTY = "Gesprochene Sätze nach Partei"
 INTERRUPTIONS_TOTAL = "Zwischenrufe insgesamt"
@@ -253,7 +338,7 @@ def render_year_plot(
             hovertemplate=("%{y:,.1f} Sätze je Sitz" if normalize_seats
                            else "%{y:,.0f} Sätze") + "<extra>%{fullData.name}</extra>"
         )
-        return finish_figure(figure, unit)
+        return finish_party_year_figure(figure, unit, start_year, end_year)
     if plot_type == INTERRUPTIONS_TOTAL:
         frame = (DATA.interruptions.loc[DATA.interruptions["year"].between(start_year, end_year)]
                  .groupby("year").size().rename("interruptions").reset_index())
@@ -279,7 +364,7 @@ def render_year_plot(
             hovertemplate=("%{y:.3f} Zwischenrufe je Sitz" if normalize_seats
                            else "%{y:,.0f} Zwischenrufe") + "<extra>%{fullData.name}</extra>"
         )
-        return finish_figure(figure, unit)
+        return finish_party_year_figure(figure, unit, start_year, end_year)
     if plot_type == INTERRUPTIONS_SHARE:
         title = "Anteil der Parteien an allen Zwischenrufen pro Jahr"
         if normalize_seats:
@@ -289,7 +374,8 @@ def render_year_plot(
         figure.update_traces(hovertemplate="%{y:.1f} %<extra>%{fullData.name}</extra>")
         share_unit = ("Anteil der sitznormalisierten Zwischenrufraten (%)"
                       if normalize_seats else "Anteil der Zwischenrufe (%)")
-        figure = finish_figure(figure, share_unit)
+        figure = finish_party_year_figure(
+            figure, share_unit, start_year, end_year)
         figure.update_yaxes(range=[0, 100], ticksuffix=" %")
         return figure
 
@@ -300,7 +386,7 @@ def render_year_plot(
         hovertemplate=("%{y:.3f} Zwischenrufe je Sitz" if normalize_seats
                        else "%{y:,.0f} Zwischenrufe") + "<extra>%{fullData.name}</extra>"
     )
-    return finish_figure(figure, unit)
+    return finish_party_year_figure(figure, unit, start_year, end_year)
 
 
 def normalized_callout(value: str) -> str:
@@ -622,6 +708,56 @@ def party_bar(frame: pd.DataFrame, normalize_seats: bool,
     return finish_figure(figure, y_title)
 
 
+def coalition_cards(
+    start: pd.Timestamp, end: pd.Timestamp, exclude_carryover: bool,
+) -> str:
+    """Render equal-size coalition cards for phases intersecting a date range."""
+    phases = []
+    for period in DATA.periods.values():
+        for coalition in period.get("coalitions", []):
+            phase_start = pd.Timestamp(coalition["start_date"])
+            phase_end = pd.Timestamp(coalition["end_date"])
+            if phase_end >= start and phase_start <= end:
+                parties = sorted(
+                    coalition.get("parties", []),
+                    key=lambda party: COALITION_PARTY_ORDER.index(party),
+                )
+                if parties:
+                    phases.append((phase_start, phase_end, parties))
+
+    # At the beginning of a new Bundestag, the previous cabinet may remain in
+    # office in a caretaker capacity. If a new coalition starts in the selected
+    # parliamentary period, show that political formation rather than the
+    # carryover from the preceding Bundestag.
+    if exclude_carryover and any(start <= phase_start <= end for phase_start, _, _ in phases):
+        phases = [phase for phase in phases if phase[0] >= start]
+
+    if not phases:
+        return '<div class="coalition-empty">Keine Koalitionsdaten im gewählten Zeitraum.</div>'
+
+    latest_period = max(DATA.periods, key=int)
+    provisional_end = pd.Timestamp(DATA.periods[latest_period]["end_date"])
+    cards = []
+    for phase_start, phase_end, parties in phases:
+        swatches = "".join(
+            f'<span style="background:{PARTY_COLORS.get(party, "#7a7a7a")}"></span>'
+            for party in parties
+        )
+        end_label = f"{phase_end:%d.%m.%Y}"
+        end_caption = "Bis"
+        if phase_end == provisional_end:
+            end_caption = "Bis · Voraussichtlich"
+        cards.append(
+            '<div class="coalition-card">'
+            f'<div class="coalition-swatches">{swatches}</div>'
+            '<div class="coalition-dates">'
+            f'<span><small>Von</small>{phase_start:%d.%m.%Y}</span>'
+            f'<span><small>{end_caption}</small>{end_label}</span>'
+            '</div></div>'
+        )
+    return '<div class="coalition-card-list">' + "".join(cards) + "</div>"
+
+
 def interruption_matrix(frame: pd.DataFrame, normalize_seats: bool,
                         normalize_sentences: bool,
                         selected_parties: list[str], show_values: bool) -> go.Figure:
@@ -674,12 +810,14 @@ def interruption_matrix(frame: pd.DataFrame, normalize_seats: bool,
 def render_detail_plot(plot_type: str, custom_dates: bool, period: str,
                        start_value: str, end_value: str, normalize_seats: bool,
                        normalize_sentences: bool, selected_parties: list[str],
-                       show_values: bool) -> tuple[go.Figure, str]:
+                       show_values: bool) -> tuple[go.Figure, str, str]:
     start, end = selected_range(not custom_dates, period, start_value, end_value)
+    coalition_list = coalition_cards(start, end, exclude_carryover=not custom_dates)
     frame = DATA.interruptions.loc[DATA.interruptions["date"].between(start, end)].copy()
     selected_parties = [party for party in PARTIES if party in (selected_parties or [])]
     if not selected_parties:
-        return empty_figure("Bitte mindestens eine Partei auswählen."), "Keine Partei ausgewählt."
+        return (empty_figure("Bitte mindestens eine Partei auswählen."),
+                "Keine Partei ausgewählt.", coalition_list)
     if plot_type == "Zwischenrufe nach Partei":
         frame = frame.loc[frame["comment_party"].isin(selected_parties)]
     else:
@@ -688,7 +826,8 @@ def render_detail_plot(plot_type: str, custom_dates: bool, period: str,
             & frame["interrupted_speaker_party"].isin(selected_parties)
         ]
     if frame.empty:
-        return empty_figure("Für diesen Zeitraum liegen keine Zwischenrufe vor."), "Keine Daten im gewählten Zeitraum."
+        return (empty_figure("Für diesen Zeitraum liegen keine Zwischenrufe vor."),
+                "Keine Daten im gewählten Zeitraum.", coalition_list)
     figure = (party_bar(frame, normalize_seats, selected_parties)
               if plot_type == "Zwischenrufe nach Partei"
               else interruption_matrix(
@@ -699,7 +838,7 @@ def render_detail_plot(plot_type: str, custom_dates: bool, period: str,
         f"**{start.date():%d.%m.%Y}–{end.date():%d.%m.%Y}** · "
         f"**{len(frame):,}** Zwischenrufe"
     ).replace(",", ".")
-    return figure, summary
+    return figure, summary, coalition_list
 
 
 def update_period_info(period: str) -> str:
@@ -783,11 +922,11 @@ Originalprotokoll.
 
 Die Auswahl verwendet kein großes Sprachmodell. Ein klassisches
 TF-IDF-/Logistic-Regression-Modell wurde mit **4.500 manuell annotierten
-Zwischenrufen** trainiert und schätzt, ob ein Zuruf negativ ist. Ähnliche Texte
-im 30-Tage-Fenster werden zusätzlich per TF-IDF-Cosinus-Ähnlichkeit erkannt;
-ungewöhnlichere Formulierungen erhalten einen höheren Eigenständigkeitswert.
-Beide Werte sind automatische Schätzungen. Ironie, Zitate und fehlender Kontext
-können zu falschen Einstufungen führen.
+Zwischenrufen** trainiert. Die Liste enthält ungefähr **80 % negativ und 20 %
+positiv** eingeordnete Zurufe. Ähnliche Texte im 30-Tage-Fenster werden per
+TF-IDF-Cosinus-Ähnlichkeit erkannt, damit sich Formulierungen möglichst wenig
+wiederholen. Die Modellwerte werden nicht angezeigt. Ironie, Zitate und
+fehlender Kontext können zu falschen Einstufungen führen.
 
 ### Lizenz
 
@@ -837,6 +976,14 @@ CSS = f"""
 .latest-plot .plot-container {{min-height: 400px !important;}}
 .heatmap-plot {{max-width: {HEATMAP_WIDTH_PX}px !important; margin-left: 0 !important; margin-right: auto !important; overflow-x: auto !important;}}
 .heatmap-plot .plot-container {{min-height: 0 !important;}}
+.coalition-card-list {{display: flex; flex-wrap: wrap; gap: 10px; margin: 2px 0 8px;}}
+.coalition-card {{flex: 0 0 220px; height: 82px; overflow: hidden; background: #f4f5f7; border: 1px solid #dfe3e8; border-radius: 12px; box-shadow: 0 1px 2px rgba(20, 30, 45, 0.05);}}
+.coalition-swatches {{display: flex; width: 100%; height: 9px;}}
+.coalition-swatches span {{flex: 1 1 0;}}
+.coalition-dates {{display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 11px 13px; color: #202124; font-size: 0.86rem;}}
+.coalition-dates span {{display: flex; flex-direction: column; white-space: nowrap;}}
+.coalition-dates small {{color: #707782; font-size: 0.68rem; line-height: 1.2; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.04em;}}
+.coalition-empty {{padding: 14px 16px; background: #f4f5f7; border: 1px solid #dfe3e8; border-radius: 12px; color: #707782;}}
 .callout-list blockquote {{border-left: 4px solid #c9ced6; margin: 14px 0; padding: 10px 14px; background: #f7f8fa;}}
 @media (max-width: 900px) {{
   .gradio-container {{width: calc(100% - 24px) !important;}}
@@ -857,6 +1004,7 @@ CSS = f"""
   .control-panel {{padding: 12px;}}
   .plot-panel .plot-container {{min-height: 360px !important;}}
   .latest-plot .plot-container {{min-height: 350px !important;}}
+  .coalition-card {{flex-basis: min(220px, 100%);}}
   .info-panel {{padding: 14px 16px;}}
   .dashboard-title h1 {{font-size: 1.35rem !important; line-height: 1.2 !important;}}
 }}
@@ -957,6 +1105,8 @@ def build_app() -> gr.Blocks:
                     with gr.Column(elem_classes="plot-panel"):
                         detail_summary = gr.Markdown()
                         detail_plot = gr.Plot(show_label=False, elem_classes=["heatmap-plot"])
+                        gr.Markdown("### Regierungskoalitionen", elem_classes="control-section")
+                        detail_coalitions = gr.HTML()
             with gr.Tab("Bundestag Aktuell"):
                 latest_callout_count = gr.State(value=INITIAL_CALLOUT_COUNT)
                 latest_summary = gr.Markdown()
@@ -978,8 +1128,9 @@ def build_app() -> gr.Blocks:
                         latest_plot = gr.Plot(show_label=False, elem_classes="latest-plot")
                 gr.Markdown("## Interessante Zurufe")
                 gr.Markdown(
-                    "Die Auswahl der Zwischenrufe erfolgt automatisiert "
-                    "und basiert auf klassischem NLP (pre-Transformer). Sie kann Ironie oder fehlenden Kontext übersehen.",
+                    "Automatisch ausgewählt: ungefähr 80 % negativ und 20 % positiv "
+                    "eingeordnete, möglichst unterschiedliche Zurufe. Ironie oder fehlender "
+                    "Kontext können übersehen werden.",
                     elem_classes="dashboard-subtitle",
                 )
                 latest_callouts = gr.Markdown(elem_classes="callout-list")
@@ -1047,9 +1198,15 @@ def build_app() -> gr.Blocks:
             outputs=[latest_callout_count, latest_callouts],
         )
         refresh_year.click(render_year_plot, inputs=year_inputs, outputs=year_plot)
-        refresh_detail.click(render_detail_plot, inputs=detail_inputs, outputs=[detail_plot, detail_summary])
+        refresh_detail.click(
+            render_detail_plot, inputs=detail_inputs,
+            outputs=[detail_plot, detail_summary, detail_coalitions],
+        )
         dashboard.load(render_year_plot, inputs=year_inputs, outputs=year_plot)
-        dashboard.load(render_detail_plot, inputs=detail_inputs, outputs=[detail_plot, detail_summary])
+        dashboard.load(
+            render_detail_plot, inputs=detail_inputs,
+            outputs=[detail_plot, detail_summary, detail_coalitions],
+        )
         dashboard.load(render_latest_board, inputs=latest_inputs, outputs=latest_outputs)
 
         year_plot_type.change(
@@ -1090,7 +1247,7 @@ def build_app() -> gr.Blocks:
             ).then(
                 render_detail_plot,
                 inputs=detail_inputs,
-                outputs=[detail_plot, detail_summary],
+                outputs=[detail_plot, detail_summary, detail_coalitions],
             )
         period.change(
             update_period,
@@ -1099,7 +1256,7 @@ def build_app() -> gr.Blocks:
         ).then(
             render_detail_plot,
             inputs=detail_inputs,
-            outputs=[detail_plot, detail_summary],
+            outputs=[detail_plot, detail_summary, detail_coalitions],
         )
         for control in [
             normalize_seats,
@@ -1112,7 +1269,7 @@ def build_app() -> gr.Blocks:
             control.change(
                 render_detail_plot,
                 inputs=detail_inputs,
-                outputs=[detail_plot, detail_summary],
+                outputs=[detail_plot, detail_summary, detail_coalitions],
             )
     return dashboard
 
