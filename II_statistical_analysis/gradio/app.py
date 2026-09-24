@@ -957,6 +957,8 @@ FORCE_LIGHT_MODE_JS = """
     }
 
     const requestedView = embedMode ? url.searchParams.get("view") : null;
+    const controlsMode = url.searchParams.get("controls") || "open";
+    const showControlsToggle = url.searchParams.get("toggle") !== "0";
     const tabLabels = {
         timeline: "Entwicklung über Zeit",
         relationships: "Wer unterbricht wen?",
@@ -973,6 +975,31 @@ FORCE_LIGHT_MODE_JS = """
             panel.style.setProperty("width", "100%", "important");
             panel.style.setProperty("max-width", "none", "important");
             panel.style.setProperty("align-self", "stretch", "important");
+            if (panel.classList.contains("latest-controls")) {
+                return;
+            }
+
+            const row = panel.parentElement;
+            let toggle = row.querySelector(".embed-controls-toggle");
+            if (!toggle && controlsMode !== "hidden" && showControlsToggle) {
+                toggle = document.createElement("button");
+                toggle.type = "button";
+                toggle.className = "embed-controls-toggle";
+                toggle.addEventListener("click", () => {
+                    const collapsed = panel.style.display === "none";
+                    panel.style.setProperty("display", collapsed ? "flex" : "none", "important");
+                    toggle.textContent = collapsed ? "Optionen ausblenden" : "Optionen anzeigen";
+                    toggle.setAttribute("aria-expanded", String(collapsed));
+                });
+                row.appendChild(toggle);
+            }
+
+            const collapsed = controlsMode === "closed" || controlsMode === "hidden";
+            panel.style.setProperty("display", collapsed ? "none" : "flex", "important");
+            if (toggle) {
+                toggle.textContent = collapsed ? "Optionen anzeigen" : "Optionen ausblenden";
+                toggle.setAttribute("aria-expanded", String(!collapsed));
+            }
         });
     };
 
@@ -1025,24 +1052,72 @@ def requested_plot_type(request: gr.Request, choices: dict[str, str], default: s
     return choices.get(query.get("plot", ""), default)
 
 
+def query_bool(query, name: str, default: bool = False) -> bool:
+    value = query.get(name)
+    if value is None:
+        return default
+    return str(value).lower() in {"1", "true", "yes", "on"}
+
+
+def query_int(query, name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        return min(max(int(query.get(name, default)), minimum), maximum)
+    except (TypeError, ValueError):
+        return default
+
+
 def load_year_embed(
     start_value: int, end_value: int, normalize_seats: bool, request: gr.Request,
-) -> tuple[str, go.Figure]:
+) -> tuple[str, str, int, int, bool, go.Figure]:
     plot_type = requested_plot_type(request, YEAR_PLOT_QUERY_VALUES, INTERRUPTIONS_BY_PARTY)
-    return plot_type, render_year_plot(plot_type, start_value, end_value, normalize_seats)
+    query = request.query_params
+    if query.get("embed") == "1":
+        start_value = query_int(query, "start_year", MIN_YEAR, MIN_YEAR, MAX_YEAR)
+        end_value = query_int(query, "end_year", MAX_YEAR, MIN_YEAR, MAX_YEAR)
+        normalize_seats = query_bool(query, "normalize", False)
+    if start_value > end_value:
+        start_value, end_value = end_value, start_value
+    preset = next(
+        (name for name, years in YEAR_RANGE_PRESETS.items()
+         if years == (start_value, end_value)),
+        CUSTOM_YEAR_RANGE,
+    )
+    plot = render_year_plot(plot_type, start_value, end_value, normalize_seats)
+    return plot_type, preset, start_value, end_value, normalize_seats, plot
 
 
 def load_detail_embed(
     custom_dates: bool, period_value: str, start_value: str, end_value: str,
     normalize_seats: bool, normalize_sentences: bool, parties: list[str],
     show_values_value: bool, request: gr.Request,
-) -> tuple[str, go.Figure, str, str]:
+) -> tuple[str, bool, str, str, str, bool, bool, list[str], bool, go.Figure, str, str]:
     plot_type = requested_plot_type(request, DETAIL_PLOT_QUERY_VALUES, HEATMAP)
+    query = request.query_params
+    if query.get("embed") == "1":
+        requested_period = str(query.get("period", period_value))
+        period_value = requested_period if requested_period in DATA.periods else DEFAULT_PERIOD
+        custom_dates = "start" in query or "end" in query
+        start_value = str(query.get("start", DATA.min_date.date()))
+        end_value = str(query.get("end", DATA.max_date.date()))
+        normalize_seats = query_bool(query, "normalize_seats", False)
+        normalize_sentences = query_bool(query, "normalize_sentences", False)
+        show_values_value = query_bool(query, "show_values", False)
+        if "parties" in query:
+            requested_parties = [party.strip() for party in query["parties"].split(",")]
+            parties = [party for party in PARTIES if party in requested_parties]
+        else:
+            parties = default_parties(period_value)
     plot, summary, coalitions = render_detail_plot(
         plot_type, custom_dates, period_value, start_value, end_value,
         normalize_seats, normalize_sentences, parties, show_values_value,
     )
-    return plot_type, plot, summary, coalitions
+    return (
+        plot_type, custom_dates, period_value,
+        gr.update(value=start_value, visible=custom_dates),
+        gr.update(value=end_value, visible=custom_dates),
+        normalize_seats, normalize_sentences, parties, show_values_value,
+        plot, summary, coalitions,
+    )
 
 
 def load_latest_embed(
@@ -1136,6 +1211,18 @@ EMBED_ONLY_CSS = """
   flex-direction: column !important;
   gap: 8px !important;
 }
+.embed-mode .dashboard-tabs,
+.embed-mode .dashboard-tabs > div,
+.embed-mode .dashboard-tabs .tabitem {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+.embed-mode main {
+  padding: 0 !important;
+}
+.embed-mode .dashboard-tabs > .tab-wrapper {
+  display: none !important;
+}
 .embed-mode .plot-panel {
   order: 1 !important;
   width: 100% !important;
@@ -1175,6 +1262,21 @@ EMBED_ONLY_CSS = """
 }
 .embed-mode .desktop-row > .latest-controls {
   display: none !important;
+}
+.embed-mode .embed-controls-toggle {
+  order: 3;
+  align-self: center;
+  width: auto;
+  min-width: 150px;
+  margin: 2px auto 0;
+  padding: 5px 12px;
+  border: 1px solid #d5d9df;
+  border-radius: 999px;
+  background: #fff;
+  color: #555;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
 }
 .embed-mode footer,
 .embed-mode .footer {
@@ -1276,9 +1378,9 @@ def build_app() -> gr.Blocks:
                         custom_dates = gr.Checkbox(
                             value=False, label="Benutzerdefiniertes Start- und Enddatum")
                         start_date = gr.Textbox(value=str(DATA.min_date.date()), label="Startdatum",
-                                                info="JJJJ-MM-TT", visible=False)
+                                                info="JJJJ-MM-TT", visible="hidden")
                         end_date = gr.Textbox(value=str(DATA.max_date.date()), label="Enddatum",
-                                              info="JJJJ-MM-TT", visible=False)
+                                              info="JJJJ-MM-TT", visible="hidden")
                         period_info = gr.Markdown(
                             update_period_info(DEFAULT_PERIOD), visible=False)
                         gr.Markdown("### Parteien", elem_classes="control-section")
@@ -1422,13 +1524,16 @@ def build_app() -> gr.Blocks:
         dashboard.load(
             load_year_embed,
             inputs=[start_year, end_year, year_normalize_seats],
-            outputs=[year_plot_type, year_plot],
+            outputs=[year_plot_type, year_range_preset, start_year, end_year,
+                     year_normalize_seats, year_plot],
         )
         dashboard.load(
             load_detail_embed,
             inputs=[custom_dates, period, start_date, end_date, normalize_seats,
                     normalize_sentences, selected_parties, show_values],
-            outputs=[detail_plot_type, detail_plot, detail_summary, detail_coalitions],
+            outputs=[detail_plot_type, custom_dates, period, start_date, end_date,
+                     normalize_seats, normalize_sentences, selected_parties, show_values,
+                     detail_plot, detail_summary, detail_coalitions],
         )
         dashboard.load(
             load_latest_embed,
