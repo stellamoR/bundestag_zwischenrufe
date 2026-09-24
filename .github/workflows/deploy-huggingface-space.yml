@@ -28,21 +28,12 @@ jobs:
 
       - name: Assemble Space files
         shell: bash
-        run: |
-          mkdir -p .space-deploy/II_statistical_analysis/gradio
-          mkdir -p .space-deploy/_data
-          cp II_statistical_analysis/gradio/app.py .space-deploy/II_statistical_analysis/gradio/app.py
-          cp II_statistical_analysis/gradio/requirements.txt .space-deploy/requirements.txt
-          cp II_statistical_analysis/gradio/README.space.md .space-deploy/README.md
-          cp _data/speeches.parquet .space-deploy/_data/speeches.parquet
-          cp _data/interruptions.parquet .space-deploy/_data/interruptions.parquet
-          cp _data/interruptions_labeled.parquet .space-deploy/_data/interruptions_labeled.parquet
-          cp _data/bt_period_data.json .space-deploy/_data/bt_period_data.json
+        run: bash .github/scripts/assemble-huggingface-spaces.sh
 
       - name: Install Hugging Face uploader
         run: python -m pip install --upgrade huggingface_hub hf_xet
 
-      - name: Upload Space
+      - name: Upload full Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: >-
@@ -50,3 +41,26 @@ jobs:
           --repo-type space
           --delete "*"
           --commit-message "Deploy from GitHub ${{ github.sha }}"
+
+      - name: Create embed Space if needed
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        shell: python
+        run: |
+          from huggingface_hub import HfApi
+
+          HfApi().create_repo(
+              repo_id="stellamo/bundestag_stats_embed",
+              repo_type="space",
+              space_sdk="gradio",
+              exist_ok=True,
+          )
+
+      - name: Upload embed Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: >-
+          hf upload stellamo/bundestag_stats_embed .space-embed-deploy .
+          --repo-type space
+          --delete "*"
+          --commit-message "Deploy embed from GitHub ${{ github.sha }}"

@@ -7,4 +7,6 @@ _data/protocols/*
 III_sentiment_analysis/logs/finetuning/output_old/*
 III_sentiment_analysis/logs/*/*/*/checkpoint*/*
 .venv/
+.space-deploy/
+.space-embed-deploy/
 *.pyc

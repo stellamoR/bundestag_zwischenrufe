@@ -53,16 +53,7 @@ jobs:
       - name: Assemble Space files
         if: steps.data.outputs.changed == 'true'
         shell: bash
-        run: |
-          mkdir -p .space-deploy/II_statistical_analysis/gradio
-          mkdir -p .space-deploy/_data
-          cp II_statistical_analysis/gradio/app.py .space-deploy/II_statistical_analysis/gradio/app.py
-          cp II_statistical_analysis/gradio/requirements.txt .space-deploy/requirements.txt
-          cp II_statistical_analysis/gradio/README.space.md .space-deploy/README.md
-          cp _data/speeches.parquet .space-deploy/_data/speeches.parquet
-          cp _data/interruptions.parquet .space-deploy/_data/interruptions.parquet
-          cp _data/interruptions_labeled.parquet .space-deploy/_data/interruptions_labeled.parquet
-          cp _data/bt_period_data.json .space-deploy/_data/bt_period_data.json
+        run: bash .github/scripts/assemble-huggingface-spaces.sh
 
       - name: Deploy refreshed data to Hugging Face
         if: steps.data.outputs.changed == 'true'
@@ -74,3 +65,7 @@ jobs:
             --repo-type space \
             --delete "*" \
             --commit-message "Daily protocol update from GitHub ${{ github.sha }}"
+          hf upload stellamo/bundestag_stats_embed .space-embed-deploy . \
+            --repo-type space \
+            --delete "*" \
+            --commit-message "Daily embed data update from GitHub ${{ github.sha }}"

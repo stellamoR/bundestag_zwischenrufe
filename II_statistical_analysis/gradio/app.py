@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import inspect
 import html
 import re
@@ -1018,13 +1019,34 @@ CSS = f"""
 """
 
 
-def build_app() -> gr.Blocks:
+EMBED_ONLY_CSS = """
+.gradio-container {
+  width: 100% !important;
+  max-width: none !important;
+  padding: 0 !important;
+}
+.title-row,
+.dashboard-subtitle,
+.info-panel,
+.tab-nav,
+.embed-hide,
+.source-notice {
+  display: none !important;
+}
+.desktop-row {
+  margin-top: 0 !important;
+}
+"""
+
+
+def build_app(embed_only: bool = False) -> gr.Blocks:
+    active_css = CSS + EMBED_ONLY_CSS if embed_only else CSS
     blocks_kwargs = {
         "title": "Bundestag · Reden und Zwischenrufe",
         "fill_width": True,
     }
     if not LAUNCH_ACCEPTS_PAGE_ASSETS:
-        blocks_kwargs.update(css=CSS, js=FORCE_LIGHT_MODE_JS)
+        blocks_kwargs.update(css=active_css, js=FORCE_LIGHT_MODE_JS)
 
     with warnings.catch_warnings():
         if not LAUNCH_ACCEPTS_PAGE_ASSETS:
@@ -1146,7 +1168,11 @@ def build_app() -> gr.Blocks:
                 latest_callouts = gr.Markdown(elem_classes="callout-list")
                 load_more_callouts = gr.Button("Mehr Zwischenrufe laden")
 
-        with gr.Accordion("Fehler melden oder Korrektur vorschlagen", open=False):
+        with gr.Accordion(
+            "Fehler melden oder Korrektur vorschlagen",
+            open=False,
+            elem_classes="embed-hide",
+        ):
             gr.Markdown(
                 "Bitte möglichst Datum, Person und – falls vorhanden – das Originalprotokoll "
                 "angeben. Die Meldung kann vor dem Absenden auf GitHub geprüft werden."
@@ -1286,10 +1312,12 @@ def build_app() -> gr.Blocks:
     return dashboard
 
 
-demo = build_app()
+EMBED_ONLY = os.environ.get("BUNDESTAG_EMBED_ONLY") == "1"
+ACTIVE_CSS = CSS + EMBED_ONLY_CSS if EMBED_ONLY else CSS
+demo = build_app(embed_only=EMBED_ONLY)
 
 if __name__ == "__main__":
     launch_kwargs = {}
     if LAUNCH_ACCEPTS_PAGE_ASSETS:
-        launch_kwargs.update(css=CSS, js=FORCE_LIGHT_MODE_JS)
+        launch_kwargs.update(css=ACTIVE_CSS, js=FORCE_LIGHT_MODE_JS)
     demo.launch(**launch_kwargs)
