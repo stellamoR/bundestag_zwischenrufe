@@ -495,9 +495,8 @@ def latest_party_pie(frame: pd.DataFrame) -> go.Figure:
     )
     figure.update_layout(
         template=PLOT_TEMPLATE,
-        width=500,
         height=400,
-        autosize=False,
+        autosize=True,
         legend_title_text="Partei der Zwischenrufenden",
         margin={"l": 25, "r": 25, "t": 75, "b": 25},
     )
@@ -1173,7 +1172,7 @@ CSS = f"""
 .plot-panel {{flex: 1 1 auto !important; min-width: 680px !important;}}
 .plot-panel .plot-container {{min-height: 600px !important;}}
 .latest-plot .plot-container {{min-height: 400px !important;}}
-.heatmap-plot {{max-width: {HEATMAP_WIDTH_PX}px !important; margin-left: 0 !important; margin-right: auto !important; overflow-x: auto !important;}}
+.heatmap-plot {{max-width: {HEATMAP_WIDTH_PX}px !important; margin-left: auto !important; margin-right: auto !important; overflow-x: auto !important;}}
 .heatmap-plot .plot-container {{min-height: 0 !important;}}
 .coalition-card-list {{display: flex; flex-wrap: wrap; gap: 10px; margin: 2px 0 8px;}}
 .coalition-card {{flex: 0 0 220px; height: 82px; overflow: hidden; background: #f4f5f7; border: 1px solid #dfe3e8; border-radius: 12px; box-shadow: 0 1px 2px rgba(20, 30, 45, 0.05);}}
@@ -1265,6 +1264,7 @@ EMBED_ONLY_CSS = """
 }
 .embed-mode .control-section {
   margin: 0 !important;
+  overflow: visible !important;
 }
 .embed-mode .control-section h3 {
   margin: 0 !important;
