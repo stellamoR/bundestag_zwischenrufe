@@ -65,7 +65,3 @@ jobs:
             --repo-type space \
             --delete "*" \
             --commit-message "Daily protocol update from GitHub ${{ github.sha }}"
-          hf upload stellamo/bundestag_stats_embed .space-embed-deploy . \
-            --repo-type space \
-            --delete "*" \
-            --commit-message "Daily embed data update from GitHub ${{ github.sha }}"

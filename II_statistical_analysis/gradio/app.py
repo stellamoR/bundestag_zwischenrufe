@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import inspect
 import html
 import re
@@ -948,9 +947,44 @@ Bundestages.
 FORCE_LIGHT_MODE_JS = """
 () => {
     const url = new URL(window.location.href);
+    const embedMode = url.searchParams.get("embed") === "1";
+    document.documentElement.classList.toggle("embed-mode", embedMode);
+
     if (url.searchParams.get("__theme") !== "light") {
         url.searchParams.set("__theme", "light");
         window.location.replace(url.href);
+        return;
+    }
+
+    const requestedView = embedMode ? url.searchParams.get("view") : null;
+    const tabLabels = {
+        timeline: "Entwicklung über Zeit",
+        relationships: "Wer unterbricht wen?",
+        current: "Bundestag Aktuell",
+    };
+    const requestedLabel = tabLabels[requestedView];
+    if (!requestedLabel) {
+        return;
+    }
+
+    const selectRequestedTab = () => {
+        const tab = [...document.querySelectorAll('button[role="tab"]')]
+            .find((button) => button.textContent.trim() === requestedLabel);
+        if (!tab) {
+            return false;
+        }
+        tab.click();
+        return true;
+    };
+
+    if (!selectRequestedTab()) {
+        const observer = new MutationObserver(() => {
+            if (selectRequestedTab()) {
+                observer.disconnect();
+            }
+        });
+        observer.observe(document.documentElement, {childList: true, subtree: true});
+        window.setTimeout(() => observer.disconnect(), 10000);
     }
 }
 """
@@ -1020,41 +1054,41 @@ CSS = f"""
 
 
 EMBED_ONLY_CSS = """
-.gradio-container {
+.embed-mode .gradio-container {
   width: 100% !important;
   max-width: none !important;
   padding: 0 !important;
 }
-.title-row,
-.dashboard-subtitle,
-.info-panel,
-.tab-nav,
-.embed-hide,
-.source-notice {
+.embed-mode .title-row,
+.embed-mode .dashboard-subtitle,
+.embed-mode .info-panel,
+.embed-mode .tab-nav,
+.embed-mode .embed-hide,
+.embed-mode .embed-exclude,
+.embed-mode .source-notice {
   display: none !important;
 }
-.desktop-row {
+.embed-mode .desktop-row {
   margin-top: 0 !important;
 }
 """
 
 
-def build_app(embed_only: bool = False) -> gr.Blocks:
-    active_css = CSS + EMBED_ONLY_CSS if embed_only else CSS
+def build_app() -> gr.Blocks:
+    active_css = CSS + EMBED_ONLY_CSS
     blocks_kwargs = {
         "title": "Bundestag · Reden und Zwischenrufe",
         "fill_width": True,
+        "css": active_css,
+        "js": FORCE_LIGHT_MODE_JS,
     }
-    if not LAUNCH_ACCEPTS_PAGE_ASSETS:
-        blocks_kwargs.update(css=active_css, js=FORCE_LIGHT_MODE_JS)
 
     with warnings.catch_warnings():
-        if not LAUNCH_ACCEPTS_PAGE_ASSETS:
-            warnings.filterwarnings(
-                "ignore",
-                message="The '(css|js)' parameter in the Blocks constructor will be removed",
-                category=DeprecationWarning,
-            )
+        warnings.filterwarnings(
+            "ignore",
+            message="The '(css|js)' parameter in the Blocks constructor will be removed",
+            category=DeprecationWarning,
+        )
         dashboard = gr.Blocks(**blocks_kwargs)
 
     with dashboard:
@@ -1135,13 +1169,16 @@ def build_app(embed_only: bool = False) -> gr.Blocks:
                         normalize_sentences = gr.Checkbox(value=False, label="Nach gesprochenen Sätzen der unterbrochenen Partei normalisieren")
                         refresh_detail = gr.Button("Diagramm aktualisieren", variant="primary")
                     with gr.Column(elem_classes="plot-panel"):
-                        detail_summary = gr.Markdown()
+                        detail_summary = gr.Markdown(elem_classes="embed-exclude")
                         detail_plot = gr.Plot(show_label=False, elem_classes=["heatmap-plot"])
-                        gr.Markdown("### Regierungskoalitionen", elem_classes="control-section")
-                        detail_coalitions = gr.HTML()
+                        gr.Markdown(
+                            "### Regierungskoalitionen",
+                            elem_classes=["control-section", "embed-exclude"],
+                        )
+                        detail_coalitions = gr.HTML(elem_classes="embed-exclude")
             with gr.Tab("Bundestag Aktuell"):
                 latest_callout_count = gr.State(value=INITIAL_CALLOUT_COUNT)
-                latest_summary = gr.Markdown()
+                latest_summary = gr.Markdown(elem_classes="embed-exclude")
                 with gr.Row(elem_classes="desktop-row"):
                     with gr.Column(scale=1, elem_classes="control-panel"):
                         gr.Markdown("### Darstellung", elem_classes="control-section")
@@ -1158,15 +1195,19 @@ def build_app(embed_only: bool = False) -> gr.Blocks:
                         refresh_latest = gr.Button("Ansicht aktualisieren", variant="primary")
                     with gr.Column(scale=2, elem_classes="plot-panel"):
                         latest_plot = gr.Plot(show_label=False, elem_classes="latest-plot")
-                gr.Markdown("## Interessante Zurufe")
+                gr.Markdown("## Interessante Zurufe", elem_classes="embed-exclude")
                 gr.Markdown(
                     "Automatisch ausgewählt: ungefähr 80 % negativ und 20 % positiv "
                     "eingeordnete, möglichst unterschiedliche Zurufe. Ironie oder fehlender "
                     "Kontext können übersehen werden.",
-                    elem_classes="dashboard-subtitle",
+                    elem_classes=["dashboard-subtitle", "embed-exclude"],
                 )
-                latest_callouts = gr.Markdown(elem_classes="callout-list")
-                load_more_callouts = gr.Button("Mehr Zwischenrufe laden")
+                latest_callouts = gr.Markdown(
+                    elem_classes=["callout-list", "embed-exclude"]
+                )
+                load_more_callouts = gr.Button(
+                    "Mehr Zwischenrufe laden", elem_classes="embed-exclude"
+                )
 
         with gr.Accordion(
             "Fehler melden oder Korrektur vorschlagen",
@@ -1312,9 +1353,8 @@ def build_app(embed_only: bool = False) -> gr.Blocks:
     return dashboard
 
 
-EMBED_ONLY = os.environ.get("BUNDESTAG_EMBED_ONLY") == "1"
-ACTIVE_CSS = CSS + EMBED_ONLY_CSS if EMBED_ONLY else CSS
-demo = build_app(embed_only=EMBED_ONLY)
+ACTIVE_CSS = CSS + EMBED_ONLY_CSS
+demo = build_app()
 
 if __name__ == "__main__":
     launch_kwargs = {}
