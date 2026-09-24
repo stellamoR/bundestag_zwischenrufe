@@ -989,6 +989,59 @@ FORCE_LIGHT_MODE_JS = """
 }
 """
 
+YEAR_PLOT_QUERY_VALUES = {
+    "sentences-total": SENTENCES_TOTAL,
+    "sentences-by-party": SENTENCES_BY_PARTY,
+    "interruptions-total": INTERRUPTIONS_TOTAL,
+    "interruptions-by-party": INTERRUPTIONS_BY_PARTY,
+    "interruptions-stacked": INTERRUPTIONS_STACKED,
+    "interruptions-share": INTERRUPTIONS_SHARE,
+}
+DETAIL_PLOT_QUERY_VALUES = {
+    "heatmap": HEATMAP,
+    "interruptions-by-party": INTERRUPTIONS_BY_PARTY,
+}
+LATEST_PLOT_QUERY_VALUES = {
+    "daily": LATEST_DAILY_STACK,
+    "party-share": LATEST_PARTY_SHARE,
+}
+
+
+def requested_plot_type(request: gr.Request, choices: dict[str, str], default: str) -> str:
+    """Read an embed-only plot selection without changing the regular dashboard."""
+    query = request.query_params
+    if query.get("embed") != "1":
+        return default
+    return choices.get(query.get("plot", ""), default)
+
+
+def load_year_embed(
+    start_value: int, end_value: int, normalize_seats: bool, request: gr.Request,
+) -> tuple[str, go.Figure]:
+    plot_type = requested_plot_type(request, YEAR_PLOT_QUERY_VALUES, INTERRUPTIONS_BY_PARTY)
+    return plot_type, render_year_plot(plot_type, start_value, end_value, normalize_seats)
+
+
+def load_detail_embed(
+    custom_dates: bool, period_value: str, start_value: str, end_value: str,
+    normalize_seats: bool, normalize_sentences: bool, parties: list[str],
+    show_values_value: bool, request: gr.Request,
+) -> tuple[str, go.Figure, str, str]:
+    plot_type = requested_plot_type(request, DETAIL_PLOT_QUERY_VALUES, HEATMAP)
+    plot, summary, coalitions = render_detail_plot(
+        plot_type, custom_dates, period_value, start_value, end_value,
+        normalize_seats, normalize_sentences, parties, show_values_value,
+    )
+    return plot_type, plot, summary, coalitions
+
+
+def load_latest_embed(
+    callout_count: int, request: gr.Request,
+) -> tuple[str, str, go.Figure, str]:
+    plot_type = requested_plot_type(request, LATEST_PLOT_QUERY_VALUES, LATEST_DAILY_STACK)
+    summary, plot, callouts = render_latest_board(plot_type, callout_count)
+    return plot_type, summary, plot, callouts
+
 CSS = f"""
 .gradio-container {{width: calc(100% - 48px) !important; max-width: 1680px !important; min-width: 0 !important; margin: 0 auto !important;}}
 .title-row {{align-items: center !important;}}
@@ -1070,6 +1123,60 @@ EMBED_ONLY_CSS = """
 }
 .embed-mode .desktop-row {
   margin-top: 0 !important;
+  flex-direction: column-reverse !important;
+  gap: 8px !important;
+}
+.embed-mode .plot-panel {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+.embed-mode .plot-panel .plot-container {
+  min-height: 520px !important;
+}
+.embed-mode .control-panel {
+  display: grid !important;
+  grid-template-columns: minmax(110px, auto) repeat(3, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  padding: 8px !important;
+  border-radius: 10px !important;
+}
+.embed-mode .control-section {
+  margin: 0 !important;
+}
+.embed-mode .control-section h3 {
+  margin: 0 !important;
+}
+.embed-mode .embed-plot-type,
+.embed-mode .embed-refresh {
+  display: none !important;
+}
+.embed-mode .timeline-controls > :nth-child(3) { grid-column: 1; grid-row: 1; }
+.embed-mode .timeline-controls > :nth-child(4) { grid-column: 2; grid-row: 1; }
+.embed-mode .timeline-controls > :nth-child(5) { grid-column: 3 / 5; grid-row: 1; }
+.embed-mode .timeline-controls > :nth-child(6) { grid-column: 1; grid-row: 2; }
+.embed-mode .timeline-controls > :nth-child(7) { grid-column: 2 / 5; grid-row: 2; }
+.embed-mode .detail-controls > :nth-child(3) { grid-column: 4; grid-row: 3; }
+.embed-mode .detail-controls > :nth-child(4) { grid-column: 1; grid-row: 1; }
+.embed-mode .detail-controls > :nth-child(5) { grid-column: 2; grid-row: 1; }
+.embed-mode .detail-controls > :nth-child(6) { grid-column: 3 / 5; grid-row: 1; }
+.embed-mode .detail-controls > :nth-child(10) { grid-column: 1; grid-row: 2; }
+.embed-mode .detail-controls > :nth-child(11) { grid-column: 2 / 5; grid-row: 2; }
+.embed-mode .detail-controls > :nth-child(12) { grid-column: 1; grid-row: 3; }
+.embed-mode .detail-controls > :nth-child(13) { grid-column: 2; grid-row: 3; }
+.embed-mode .detail-controls > :nth-child(14) { grid-column: 3; grid-row: 3; }
+.embed-mode .latest-controls > :nth-child(3) { grid-column: 1; }
+.embed-mode .latest-controls > :nth-child(4) { grid-column: 2 / 5; }
+@media (max-width: 700px) {
+  .embed-mode .control-panel {
+    grid-template-columns: 1fr !important;
+  }
+  .embed-mode .control-panel > * {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+  }
 }
 """
 
@@ -1106,11 +1213,17 @@ def build_app() -> gr.Blocks:
         with gr.Tabs():
             with gr.Tab("Entwicklung über Zeit"):
                 with gr.Row(elem_classes="desktop-row"):
-                    with gr.Column(scale=1, elem_classes="control-panel"):
-                        gr.Markdown("### Darstellung", elem_classes="control-section")
+                    with gr.Column(
+                        scale=1, elem_classes=["control-panel", "timeline-controls"],
+                    ):
+                        gr.Markdown(
+                            "### Darstellung",
+                            elem_classes=["control-section", "embed-plot-type"],
+                        )
                         year_plot_type = gr.Dropdown(
                             YEAR_PLOT_CHOICES, value=INTERRUPTIONS_BY_PARTY,
                             show_label=False, allow_custom_value=False, filterable=False,
+                            elem_classes="embed-plot-type",
                         )
                         gr.Markdown("### Zeitraum", elem_classes="control-section")
                         year_range_preset = gr.Dropdown(
@@ -1133,17 +1246,26 @@ def build_app() -> gr.Blocks:
                             label="Nach Sitzen der jeweiligen Partei normalisieren",
                             info="Gleicht unterschiedlich große Fraktionen aus.",
                         )
-                        refresh_year = gr.Button("Diagramm aktualisieren", variant="primary")
+                        refresh_year = gr.Button(
+                            "Diagramm aktualisieren", variant="primary",
+                            elem_classes="embed-refresh",
+                        )
                     with gr.Column(elem_classes="plot-panel"):
                         year_plot = gr.Plot(show_label=False)
             with gr.Tab("Wer unterbricht wen?"):
                 with gr.Row(elem_classes="desktop-row"):
-                    with gr.Column(scale=1, elem_classes="control-panel"):
-                        gr.Markdown("### Darstellung", elem_classes="control-section")
+                    with gr.Column(
+                        scale=1, elem_classes=["control-panel", "detail-controls"],
+                    ):
+                        gr.Markdown(
+                            "### Darstellung",
+                            elem_classes=["control-section", "embed-plot-type"],
+                        )
                         detail_plot_type = gr.Dropdown(
                             [HEATMAP, "Zwischenrufe nach Partei"],
                             value=HEATMAP, show_label=False,
-                            allow_custom_value=False, filterable=False)
+                            allow_custom_value=False, filterable=False,
+                            elem_classes="embed-plot-type")
                         show_values = gr.Checkbox(value=False, label="Werte in der Heatmap anzeigen")
                         gr.Markdown("### Zeitraum", elem_classes="control-section")
                         period = gr.Dropdown(
@@ -1167,7 +1289,10 @@ def build_app() -> gr.Blocks:
                         gr.Markdown("### Normalisierung", elem_classes="control-section")
                         normalize_seats = gr.Checkbox(value=False, label="Nach Sitzen der unterbrechenden Partei normalisieren")
                         normalize_sentences = gr.Checkbox(value=False, label="Nach gesprochenen Sätzen der unterbrochenen Partei normalisieren")
-                        refresh_detail = gr.Button("Diagramm aktualisieren", variant="primary")
+                        refresh_detail = gr.Button(
+                            "Diagramm aktualisieren", variant="primary",
+                            elem_classes="embed-refresh",
+                        )
                     with gr.Column(elem_classes="plot-panel"):
                         detail_summary = gr.Markdown(elem_classes="embed-exclude")
                         detail_plot = gr.Plot(show_label=False, elem_classes=["heatmap-plot"])
@@ -1180,19 +1305,28 @@ def build_app() -> gr.Blocks:
                 latest_callout_count = gr.State(value=INITIAL_CALLOUT_COUNT)
                 latest_summary = gr.Markdown(elem_classes="embed-exclude")
                 with gr.Row(elem_classes="desktop-row"):
-                    with gr.Column(scale=1, elem_classes="control-panel"):
-                        gr.Markdown("### Darstellung", elem_classes="control-section")
+                    with gr.Column(
+                        scale=1, elem_classes=["control-panel", "latest-controls"],
+                    ):
+                        gr.Markdown(
+                            "### Darstellung",
+                            elem_classes=["control-section", "embed-plot-type"],
+                        )
                         latest_view = gr.Radio(
                             choices=LATEST_VIEW_CHOICES,
                             value=LATEST_DAILY_STACK,
                             show_label=False,
+                            elem_classes="embed-plot-type",
                         )
                         gr.Markdown("### Zeitraum", elem_classes="control-section")
                         gr.Markdown(
                             "Die Auswahl endet am neuesten verfügbaren Protokolltag und umfasst "
                             "die 30 vorhergehenden Kalendertage."
                         )
-                        refresh_latest = gr.Button("Ansicht aktualisieren", variant="primary")
+                        refresh_latest = gr.Button(
+                            "Ansicht aktualisieren", variant="primary",
+                            elem_classes="embed-refresh",
+                        )
                     with gr.Column(scale=2, elem_classes="plot-panel"):
                         latest_plot = gr.Plot(show_label=False, elem_classes="latest-plot")
                 gr.Markdown("## Interessante Zurufe", elem_classes="embed-exclude")
@@ -1281,12 +1415,22 @@ def build_app() -> gr.Blocks:
             render_detail_plot, inputs=detail_inputs,
             outputs=[detail_plot, detail_summary, detail_coalitions],
         )
-        dashboard.load(render_year_plot, inputs=year_inputs, outputs=year_plot)
         dashboard.load(
-            render_detail_plot, inputs=detail_inputs,
-            outputs=[detail_plot, detail_summary, detail_coalitions],
+            load_year_embed,
+            inputs=[start_year, end_year, year_normalize_seats],
+            outputs=[year_plot_type, year_plot],
         )
-        dashboard.load(render_latest_board, inputs=latest_inputs, outputs=latest_outputs)
+        dashboard.load(
+            load_detail_embed,
+            inputs=[custom_dates, period, start_date, end_date, normalize_seats,
+                    normalize_sentences, selected_parties, show_values],
+            outputs=[detail_plot_type, detail_plot, detail_summary, detail_coalitions],
+        )
+        dashboard.load(
+            load_latest_embed,
+            inputs=latest_callout_count,
+            outputs=[latest_view, latest_summary, latest_plot, latest_callouts],
+        )
 
         year_plot_type.change(
             update_year_seat_toggle,
