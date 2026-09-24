@@ -38,8 +38,8 @@ COALITION_PARTY_ORDER = [
 ]
 PLOT_TEMPLATE = "plotly_white"
 HEATMAP = "Beziehungen zwischen Parteien"
-# Gradio forces Plotly to fill its container, so the heatmap's square shape is
-# fixed by these pixel sizes plus the matching max-width in CSS below.
+# The preferred grid size determines the figure height. Plotly keeps the cells
+# square while autosizing the width to narrow embeds.
 HEATMAP_GRID_PX = 470
 HEATMAP_MARGIN = {"l": 110, "r": 120, "t": 140, "b": 30}
 HEATMAP_WIDTH_PX = HEATMAP_MARGIN["l"] + HEATMAP_GRID_PX + HEATMAP_MARGIN["r"]
@@ -800,14 +800,15 @@ def interruption_matrix(frame: pd.DataFrame, normalize_seats: bool,
     )
     # The x-axis sits on top, so its title needs room below the figure title.
     figure.update_layout(
-        template=PLOT_TEMPLATE, width=HEATMAP_WIDTH_PX,
+        template=PLOT_TEMPLATE, autosize=True,
         height=HEATMAP_MARGIN["t"] + HEATMAP_GRID_PX + HEATMAP_MARGIN["b"],
         title={"y": 0.97, "yanchor": "top"}, margin=HEATMAP_MARGIN,
         coloraxis_colorbar={"x": 1, "xanchor": "left", "xpad": 14, "thickness": 18,
                             "title": {"side": "right"}},
     )
-    # Square cells; any leftover space stays on the right/bottom.
-    figure.update_xaxes(side="top", constrain="domain", constraintoward="left")
+    # Keep square cells, but center the resulting domain when the responsive
+    # embed is narrower than the figure's preferred width.
+    figure.update_xaxes(side="top", constrain="domain", constraintoward="center")
     figure.update_yaxes(constrain="domain", constraintoward="top", ticklabelstandoff=8)
     figure.update_xaxes(ticklabelstandoff=4)
     return figure
@@ -1248,6 +1249,9 @@ EMBED_ONLY_CSS = """
 }
 .embed-mode .plot-panel .plot-container {
   min-height: 520px !important;
+}
+.embed-mode .heatmap-plot .plot-container {
+  min-width: 0 !important;
 }
 .embed-mode .desktop-row > .control-panel {
   order: 2 !important;
