@@ -970,7 +970,18 @@ FORCE_LIGHT_MODE_JS = """
     }
 
     const applyEmbedLayout = () => {
+        const notifyParent = (row) => {
+            const height = Math.ceil(row.getBoundingClientRect().bottom + 2);
+            window.parent.postMessage(
+                {type: "bundestag-embed-height", height},
+                "*",
+            );
+        };
+
         document.querySelectorAll(".control-panel").forEach((panel) => {
+            if (panel.offsetParent === null) {
+                return;
+            }
             panel.style.setProperty("flex", "1 1 auto", "important");
             panel.style.setProperty("width", "100%", "important");
             panel.style.setProperty("max-width", "none", "important");
@@ -990,6 +1001,7 @@ FORCE_LIGHT_MODE_JS = """
                     panel.style.setProperty("display", collapsed ? "flex" : "none", "important");
                     toggle.textContent = collapsed ? "Optionen ausblenden" : "Optionen anzeigen";
                     toggle.setAttribute("aria-expanded", String(collapsed));
+                    window.requestAnimationFrame(() => notifyParent(row));
                 });
                 row.appendChild(toggle);
             }
@@ -1000,6 +1012,12 @@ FORCE_LIGHT_MODE_JS = """
                 toggle.textContent = collapsed ? "Optionen anzeigen" : "Optionen ausblenden";
                 toggle.setAttribute("aria-expanded", String(!collapsed));
             }
+
+            if (!row.dataset.embedResizeObserver) {
+                row.dataset.embedResizeObserver = "1";
+                new ResizeObserver(() => notifyParent(row)).observe(row);
+            }
+            window.requestAnimationFrame(() => notifyParent(row));
         });
     };
 
@@ -1011,6 +1029,7 @@ FORCE_LIGHT_MODE_JS = """
             return false;
         }
         tab.click();
+        window.requestAnimationFrame(applyEmbedLayout);
         return true;
     };
 
