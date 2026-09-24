@@ -967,7 +967,17 @@ FORCE_LIGHT_MODE_JS = """
         return;
     }
 
+    const applyEmbedLayout = () => {
+        document.querySelectorAll(".control-panel").forEach((panel) => {
+            panel.style.setProperty("flex", "1 1 auto", "important");
+            panel.style.setProperty("width", "100%", "important");
+            panel.style.setProperty("max-width", "none", "important");
+            panel.style.setProperty("align-self", "stretch", "important");
+        });
+    };
+
     const selectRequestedTab = () => {
+        applyEmbedLayout();
         const tab = [...document.querySelectorAll('button[role="tab"]')]
             .find((button) => button.textContent.trim() === requestedLabel);
         if (!tab) {
@@ -1123,20 +1133,24 @@ EMBED_ONLY_CSS = """
 }
 .embed-mode .desktop-row {
   margin-top: 0 !important;
-  flex-direction: column-reverse !important;
+  flex-direction: column !important;
   gap: 8px !important;
 }
 .embed-mode .plot-panel {
+  order: 1 !important;
   width: 100% !important;
   min-width: 0 !important;
 }
 .embed-mode .plot-panel .plot-container {
   min-height: 520px !important;
 }
-.embed-mode .control-panel {
-  display: grid !important;
-  grid-template-columns: minmax(110px, auto) repeat(3, minmax(0, 1fr)) !important;
-  gap: 8px !important;
+.embed-mode .desktop-row > .control-panel {
+  order: 2 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  align-self: stretch !important;
+  gap: 4px !important;
   width: 100% !important;
   min-width: 0 !important;
   max-width: none !important;
@@ -1153,30 +1167,18 @@ EMBED_ONLY_CSS = """
 .embed-mode .embed-refresh {
   display: none !important;
 }
-.embed-mode .timeline-controls > :nth-child(3) { grid-column: 1; grid-row: 1; }
-.embed-mode .timeline-controls > :nth-child(4) { grid-column: 2; grid-row: 1; }
-.embed-mode .timeline-controls > :nth-child(5) { grid-column: 3 / 5; grid-row: 1; }
-.embed-mode .timeline-controls > :nth-child(6) { grid-column: 1; grid-row: 2; }
-.embed-mode .timeline-controls > :nth-child(7) { grid-column: 2 / 5; grid-row: 2; }
-.embed-mode .detail-controls > :nth-child(3) { grid-column: 4; grid-row: 3; }
-.embed-mode .detail-controls > :nth-child(4) { grid-column: 1; grid-row: 1; }
-.embed-mode .detail-controls > :nth-child(5) { grid-column: 2; grid-row: 1; }
-.embed-mode .detail-controls > :nth-child(6) { grid-column: 3 / 5; grid-row: 1; }
-.embed-mode .detail-controls > :nth-child(10) { grid-column: 1; grid-row: 2; }
-.embed-mode .detail-controls > :nth-child(11) { grid-column: 2 / 5; grid-row: 2; }
-.embed-mode .detail-controls > :nth-child(12) { grid-column: 1; grid-row: 3; }
-.embed-mode .detail-controls > :nth-child(13) { grid-column: 2; grid-row: 3; }
-.embed-mode .detail-controls > :nth-child(14) { grid-column: 3; grid-row: 3; }
-.embed-mode .latest-controls > :nth-child(3) { grid-column: 1; }
-.embed-mode .latest-controls > :nth-child(4) { grid-column: 2 / 5; }
-@media (max-width: 700px) {
-  .embed-mode .control-panel {
-    grid-template-columns: 1fr !important;
-  }
-  .embed-mode .control-panel > * {
-    grid-column: 1 !important;
-    grid-row: auto !important;
-  }
+.embed-mode [role="tablist"],
+.embed-mode .tab-nav,
+.embed-mode .dashboard-tabs > button,
+.embed-mode .dashboard-tabs .overflow-menu {
+  display: none !important;
+}
+.embed-mode .desktop-row > .latest-controls {
+  display: none !important;
+}
+.embed-mode footer,
+.embed-mode .footer {
+  display: none !important;
 }
 """
 
@@ -1210,7 +1212,7 @@ def build_app() -> gr.Blocks:
         with gr.Group(visible=False, elem_classes="info-panel") as info_panel:
             gr.Markdown(INFO_CONTENT)
             close_info = gr.Button("Info schließen", min_width=130)
-        with gr.Tabs():
+        with gr.Tabs(elem_classes="dashboard-tabs"):
             with gr.Tab("Entwicklung über Zeit"):
                 with gr.Row(elem_classes="desktop-row"):
                     with gr.Column(
@@ -1280,10 +1282,12 @@ def build_app() -> gr.Blocks:
                         period_info = gr.Markdown(
                             update_period_info(DEFAULT_PERIOD), visible=False)
                         gr.Markdown("### Parteien", elem_classes="control-section")
-                        selected_parties = gr.CheckboxGroup(
+                        selected_parties = gr.Dropdown(
                             choices=PARTIES,
                             value=default_parties(DEFAULT_PERIOD),
                             show_label=False,
+                            multiselect=True,
+                            filterable=False,
                             info="Standard: Parteien mit Sitzen; fraktionslos abgewählt",
                         )
                         gr.Markdown("### Normalisierung", elem_classes="control-section")
