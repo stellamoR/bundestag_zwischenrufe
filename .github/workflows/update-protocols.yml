@@ -47,6 +47,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add _data/speeches.parquet _data/interruptions.parquet
           git commit -m "Update Bundestag protocols"
+          git pull --rebase origin main
           git push origin HEAD:main
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
