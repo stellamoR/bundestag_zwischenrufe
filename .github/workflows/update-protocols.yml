@@ -51,12 +51,10 @@ jobs:
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Assemble Space files
-        if: steps.data.outputs.changed == 'true'
         shell: bash
         run: bash .github/scripts/assemble-huggingface-spaces.sh
 
       - name: Deploy refreshed data to Hugging Face
-        if: steps.data.outputs.changed == 'true'
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
