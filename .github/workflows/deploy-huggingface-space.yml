@@ -33,6 +33,11 @@ jobs:
       - name: Install Hugging Face uploader
         run: python -m pip install --upgrade huggingface_hub hf_xet
 
+      - name: Compact old Space history
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python .github/scripts/compact-huggingface-space.py
+
       - name: Upload full Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
